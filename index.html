@@ -2,19 +2,39 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Lettre Harpe Séquentielle</title>
-<link href='https://fonts.googleapis.com/css?family=Amethysta' rel='stylesheet'>
 <style>
-  body {
+  html, body {
     margin: 0;
     padding: 0;
-    width: 100vw;
-    height: 100vh; /* Permet de détecter le clic n'importe où sur l'écran */
+    width: 100%;
+    height: 100%;
+    /* On s'assure que le fond est cliquable */
+    background-color: rgba(0,0,0,0.01); 
     overflow: hidden;
-    background: transparent;
     font-family: 'Amethysta', serif;
-    cursor: pointer;
   }
+
+  #wrapper {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 999;
+    /* Supprimez la ligne ci-dessous une fois que ça marche */
+    border: 2px dashed rgba(255,0,0,0.2); 
+  }
+
+  .click-instruction {
+    font-size: 1.5rem;
+    color: #555;
+    pointer-events: none;
+    text-align: center;
+  }
+
   .letter {
     position: absolute;
     font-size: 2rem;
@@ -22,144 +42,105 @@
     opacity: 0;
     transition: top 1.5s ease-out, opacity 1s ease-out, color 0.5s;
     color: #808080;
+    pointer-events: none;
   }
+
   @keyframes oscillate {
     0% { transform: translateX(0); }
-    25% { transform: translateX(-5px); }
     50% { transform: translateX(5px); }
-    75% { transform: translateX(-3px); }
     100% { transform: translateX(0); }
   }
   .oscillate { animation: oscillate 0.5s ease-out; }
-  .click-instruction {
-    position: absolute;
-    top: 50%;
-    width: 100%;
-    text-align: center;
-    font-size: 1.5rem;
-    color: #000; /* ⚠️ Changez en #fff si votre Google Site a un fond sombre ! */
-    transform: translateY(-50%);
-    pointer-events: none; /* Empêche le texte de bloquer le clic sur le body */
-  }
 </style>
 </head>
 <body>
 
-<div class="click-instruction">Cliquez n'importe où pour commencer</div>
+<div id="wrapper">
+  <div class="click-instruction">Cliquez ici pour charger la harpe</div>
+</div>
 
 <script>
 const words = ["Orpheus", "CARENTHIR"];
-const minY = 200;
-const maxY = 220;
-
 let audioBuffers = [];
 let context;
+let started = false;
 
-function playHarpNote() {
-  if (audioBuffers.length === 0 || !context) return;
-  const buffer = audioBuffers[Math.floor(Math.random() * audioBuffers.length)];
+async function init() {
+  if (started) return;
+  started = true;
+
+  const instruction = document.querySelector(".click-instruction");
+  instruction.textContent = "Chargement...";
+
+  // 1. Initialisation Audio
+  context = new (window.AudioContext || window.webkitAudioContext)();
+  if (context.state === 'suspended') await context.resume();
+
+  // 2. Chargement des sons (URLs de secours fiables)
+  const notesSrc = [
+    'https://tonejs.github.io/audio/salamander/C4.mp3',
+    'https://tonejs.github.io/audio/salamander/E4.mp3',
+    'https://tonejs.github.io/audio/salamander/G4.mp3'
+  ];
+
+  for (const src of notesSrc) {
+    try {
+      const resp = await fetch(src);
+      const arrayBuffer = await resp.arrayBuffer();
+      const buffer = await new Promise((res, rej) => context.decodeAudioData(arrayBuffer, res, rej));
+      audioBuffers.push(buffer);
+    } catch (e) { console.error(e); }
+  }
+
+  // 3. Lancement de l'animation
+  instruction.style.display = "none";
+  startLetters();
+}
+
+function playSound() {
+  if (!audioBuffers.length) return;
   const source = context.createBufferSource();
-  source.buffer = buffer;
+  source.buffer = audioBuffers[Math.floor(Math.random() * audioBuffers.length)];
   source.connect(context.destination);
   source.start(0);
 }
 
-async function loadSounds() {
-  const notesSrc = [
-    'https://tonejs.github.io/audio/salamander/C4.mp3',
-    'https://tonejs.github.io/audio/salamander/D4.mp3',
-    'https://tonejs.github.io/audio/salamander/E4.mp3',
-    'https://tonejs.github.io/audio/salamander/F4.mp3',
-    'https://tonejs.github.io/audio/salamander/G4.mp3',
-    'https://tonejs.github.io/audio/salamander/A4.mp3',
-    'https://tonejs.github.io/audio/salamander/B4.mp3'
-  ];
-  
-  audioBuffers = [];
-  
-  for (const src of notesSrc) {
-    try {
-      const response = await fetch(src);
-      if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`);
-      
-      const arrayBuffer = await response.arrayBuffer();
-      
-      // Syntax "Promise" modifiée pour être 100% compatible avec Safari et iOS
-      const buffer = await new Promise((resolve, reject) => {
-        context.decodeAudioData(arrayBuffer, resolve, reject);
-      });
-      
-      audioBuffers.push(buffer);
-    } catch (error) {
-      console.warn(`Le son ${src} n'a pas pu être chargé:`, error);
-    }
-  }
-}
-
 function startLetters() {
-  document.querySelector(".click-instruction").style.display = "none";
-  let offsetX = 50;
+  let offsetX = 20;
   let delay = 0;
-  const delayStep = 300;
 
   words.forEach(word => {
-    word.split("").forEach(letter => {
+    word.split("").forEach(char => {
       const span = document.createElement("span");
-      span.classList.add("letter");
-      span.textContent = letter;
+      span.className = "letter";
+      span.textContent = char;
+      span.style.left = offsetX + "px";
       document.body.appendChild(span);
 
-      span.style.left = offsetX + "px";
-      offsetX += 30;
-
       setTimeout(() => {
-        const finalY = minY + Math.random() * (maxY - minY);
-        span.style.top = finalY + "px";
+        span.style.top = (200 + Math.random() * 20) + "px";
         span.style.opacity = 1;
-
-        span.addEventListener("transitionend", function handler(e) {
+        span.addEventListener("transitionend", (e) => {
           if (e.propertyName === "top") {
             span.style.color = "#FFD700";
-            playHarpNote();
             span.classList.add("oscillate");
-            span.removeEventListener("transitionend", handler);
+            playSound();
           }
-        });
+        }, {once: true});
       }, delay);
 
-      delay += delayStep;
+      delay += 250;
+      offsetX += 25;
     });
-    offsetX += 30; // Espace entre les deux mots
+    offsetX += 40;
   });
 }
 
-document.body.addEventListener("click", async () => {
-  const instruction = document.querySelector(".click-instruction");
-  instruction.textContent = "Chargement des sons…";
-  
-  try {
-    // Création et réveil forcé du contexte audio
-    context = new (window.AudioContext || window.webkitAudioContext)();
-    if (context.state === 'suspended') {
-      await context.resume();
-    }
-    
-    await loadSounds(); 
-    
-    // Quoi qu'il arrive, on lance l'animation
-    if (audioBuffers.length === 0) {
-      instruction.textContent = "Mode sans son activé...";
-      setTimeout(startLetters, 1000);
-    } else {
-      startLetters();
-    }
-  } catch (err) {
-    console.error("Problème inattendu :", err);
-    instruction.textContent = "Démarrage forcé...";
-    setTimeout(startLetters, 1000);
-  }
-}, { once: true });
-</script>
+// Double sécurité pour le clic
+const wrapper = document.getElementById("wrapper");
+wrapper.addEventListener("click", init);
+wrapper.addEventListener("touchstart", init);
 
+</script>
 </body>
 </html>
