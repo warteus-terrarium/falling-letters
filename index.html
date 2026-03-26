@@ -2,40 +2,13 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Lettre Harpe Séquentielle</title>
-<link href='https://fonts.googleapis.com/css?family=Amethysta' rel='stylesheet'>
+<title>Lettre Harpe avec Sons Intégrés</title>
 <style>
-  body {
-    margin: 0;
-    overflow: hidden;
-    background: transparent;
-    font-family: 'Amethysta';
-    cursor: pointer;
-  }
-  .letter {
-    position: absolute;
-    font-size: 2rem;
-    top: -50px;
-    opacity: 0;
-    transition: top 1.5s ease-out, opacity 1s ease-out, color 0.5s;
-    color: #808080;
-  }
-  @keyframes oscillate {
-    0% { transform: translateX(0); }
-    25% { transform: translateX(-5px); }
-    50% { transform: translateX(5px); }
-    75% { transform: translateX(-3px); }
-    100% { transform: translateX(0); }
-  }
-  .oscillate { animation: oscillate 0.5s ease-out; }
-  .click-instruction {
-    position: absolute;
-    top: 50%;
-    width: 100%;
-    text-align: center;
-    font-size: 1.5rem;
-    color: #fff;
-  }
+  body { margin: 0; overflow: hidden; background: black; color: white; cursor:pointer; }
+  .letter { position:absolute; font-size:2rem; top:-50px; opacity:0; transition: top 1.5s ease-out, color 0.5s; color:#808080; }
+  @keyframes oscillate { 0%{transform:translateX(0)}25%{transform:translateX(-5px)}50%{transform:translateX(5px)}75%{transform:translateX(-3px)}100%{transform:translateX(0)}}
+  .oscillate { animation:oscillate 0.5s ease-out; }
+  .click-instruction { position:absolute; top:50%; width:100%; text-align:center; font-size:1.5rem; }
 </style>
 </head>
 <body>
@@ -43,89 +16,74 @@
 <div class="click-instruction">Cliquez pour commencer</div>
 
 <script>
-const words = ["Orpheus", "CARENTHIR"];
-const minY = 200;
-const maxY = 220;
+// Sons encodés (exemple simplifié, très courts)
+const base64Sounds = [
+  "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQgAAA==",
+  "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQgAAA=="
+];
 
-let audioBuffers = [];
 let context;
+let buffers = [];
 
-// Jouer une note
-function playHarpNote() {
-  if (audioBuffers.length === 0) return;
-  const buffer = audioBuffers[Math.floor(Math.random() * audioBuffers.length)];
-  const source = context.createBufferSource();
-  source.buffer = buffer;
-  source.connect(context.destination);
-  source.start(0);
-}
-
-// Charger les sons
 async function loadSounds() {
-  const notesSrc = [
-    'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-C4.mp3',
-    'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-D4.mp3',
-    'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-E4.mp3',
-    'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-F4.mp3',
-    'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-G4.mp3',
-    'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-A4.mp3',
-    'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-B4.mp3'
-  ];
-  audioBuffers = [];
-  for (const src of notesSrc) {
-    const response = await fetch(src);
+  buffers = [];
+  for (const data of base64Sounds) {
+    const response = await fetch(data);
     const arrayBuffer = await response.arrayBuffer();
-    const buffer = await context.decodeAudioData(arrayBuffer);
-    audioBuffers.push(buffer);
+    const audioBuffer = await context.decodeAudioData(arrayBuffer);
+    buffers.push(audioBuffer);
   }
 }
 
-// Chute des lettres
+function playHarpNote() {
+  if (!buffers.length) return;
+  const buffer = buffers[Math.floor(Math.random() * buffers.length)];
+  const src = context.createBufferSource();
+  src.buffer = buffer;
+  src.connect(context.destination);
+  src.start();
+}
+
 function startLetters() {
-  document.querySelector(".click-instruction").style.display = "none";
+  document.querySelector(".click-instruction").remove();
+
+  const words = ["Orpheus","CARENTHIR"];
   let offsetX = 50;
   let delay = 0;
-  const delayStep = 300;
 
   words.forEach(word => {
     word.split("").forEach(letter => {
       const span = document.createElement("span");
-      span.classList.add("letter");
       span.textContent = letter;
+      span.classList.add("letter");
       document.body.appendChild(span);
-
       span.style.left = offsetX + "px";
       offsetX += 30;
 
       setTimeout(() => {
-        const finalY = minY + Math.random() * (maxY - minY);
-        span.style.top = finalY + "px";
+        span.style.top = (200 + Math.random()*20) + "px";
         span.style.opacity = 1;
-
-        span.addEventListener("transitionend", function handler(e) {
+        span.addEventListener("transitionend", e => {
           if (e.propertyName === "top") {
             span.style.color = "#FFD700";
             playHarpNote();
             span.classList.add("oscillate");
-            span.removeEventListener("transitionend", handler);
           }
         });
       }, delay);
 
-      delay += delayStep;
+      delay += 300;
     });
     offsetX += 30;
   });
 }
 
-// Clic pour démarrer
-document.body.addEventListener("click", async () => {
-  document.querySelector(".click-instruction").textContent = "Chargement des sons…";
-  context = new (window.AudioContext || window.webkitAudioContext)();
-  await loadSounds(); // charger avant de démarrer la chute
+document.body.addEventListener("click", async function handler() {
+  context = new (window.AudioContext||window.webkitAudioContext)();
+  await loadSounds(); // load base64 embeds
   startLetters();
-}, { once: true });
-
+  document.body.removeEventListener("click", handler);
+});
 </script>
 
 </body>
