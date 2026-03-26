@@ -2,169 +2,91 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Lettre Harpe Séquentielle - Correctif</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+<link href='https://fonts.googleapis.com/css?family=Amethysta' rel='stylesheet'>
 <style>
   html, body {
-    margin: 0;
-    padding: 0;
-    width: 100%;
-    height: 100%;
-    background-color: transparent; /* Fond transparent pour Google Sites */
+    margin: 0; padding: 0;
+    width: 100%; height: 100%;
+    background: transparent;
     overflow: hidden;
     font-family: 'Amethysta', serif;
   }
-
-  /* Force la police Amethysta, même si Google Sites essaie de la surcharger */
-  @font-face {
-    font-family: 'Amethysta';
-    font-style: normal;
-    font-weight: 400;
-    src: url(https://fonts.gstatic.com/s/amethysta/v9/rP2Fp2K15kgb_F3ibfWIGvWk.woff2) format('woff2');
-  }
-
   #wrapper {
     position: absolute;
-    top: 0; left: 0;
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    width: 100%; height: 100%;
     cursor: pointer;
-    z-index: 999;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 10;
   }
-
   .click-instruction {
-    font-size: 1.5rem;
-    color: #555; /* Couleur sombre pour fond clair */
-    pointer-events: none;
+    font-size: 1.4rem;
+    color: #888;
     text-align: center;
+    transition: opacity 0.5s;
   }
-
   .letter {
     position: absolute;
-    font-size: 2.5rem; /* Légèrement plus grand */
-    font-weight: bold;
-    top: -60px; /* Commence plus haut */
+    font-size: 2.2rem;
+    top: -100px;
     opacity: 0;
-    transition: top 1.5s ease-out, opacity 1s ease-out, color 0.5s ease;
-    color: #808080; /* Gris initial */
+    color: #808080; /* Gris au départ */
+    transition: top 1.5s ease-out, opacity 1s ease-out, color 0.6s ease;
     pointer-events: none;
-    text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+    font-weight: bold;
   }
-
+  /* On force le doré avec une classe */
+  .is-final {
+    color: #FFD700 !important;
+    text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+  }
   @keyframes oscillate {
     0% { transform: translateX(0); }
     50% { transform: translateX(5px); }
     100% { transform: translateX(0); }
   }
   .oscillate { animation: oscillate 0.5s ease-out; }
-
-  /* Animation pour l'icône de chargement */
-  .fa-spinner {
-    animation: spin 1s linear infinite;
-  }
-  @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-  }
 </style>
 </head>
 <body>
 
 <div id="wrapper">
-  <div class="click-instruction">
-    <i class="fas fa-hand-pointer"></i> Cliquez pour commencer
-  </div>
+  <div class="click-instruction">Cliquez ici pour l'éveil d'Orpheus</div>
 </div>
 
 <script>
 const words = ["Orpheus", "CARENTHIR"];
-let audioBuffers = [];
-let context;
+const sounds = [
+  'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-C4.mp3',
+  'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-E4.mp3',
+  'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-G4.mp3'
+];
+
+// Préchargement simple
+const audioPool = sounds.map(src => {
+  const a = new Audio(src);
+  a.preload = "auto";
+  return a;
+});
+
 let started = false;
 
-// Tente de créer le contexte audio dès que possible pour certains navigateurs
-try {
-  context = new (window.AudioContext || window.webkitAudioContext)();
-} catch(e) { console.error("Web Audio API non supportée"); }
+function playHarp() {
+  const sound = audioPool[Math.floor(Math.random() * audioPool.length)];
+  const clone = sound.cloneNode(); // Permet de superposer les sons
+  clone.volume = 0.6;
+  clone.play().catch(e => console.log("Audio bloqué"));
+}
 
-async function init() {
+function startAnimation() {
   if (started) return;
   started = true;
-
-  const instruction = document.querySelector(".click-instruction");
-  // Affiche un spinner de chargement
-  instruction.innerHTML = '<i class="fas fa-spinner"></i> Chargement...';
-
-  // 1. Déblocage de l'Audio (Crucial pour Google Sites)
-  if (!context) context = new (window.AudioContext || window.webkitAudioContext)();
   
-  // Joue une note "silencieuse" immédiatement au clic pour débloquer Safari/Chrome
-  const osc = context.createOscillator();
-  const gain = context.createGain();
-  gain.gain.setValueAtTime(0.0001, context.currentTime); // Presque inaudible
-  osc.connect(gain);
-  gain.connect(context.destination);
-  osc.start(0);
-  osc.stop(0.1);
-
-  if (context.state === 'suspended') await context.resume();
-
-  // 2. Chargement des sons (URLs fiables)
-  // Utilise jsDelivr pour une meilleure performance
-  const notesSrc = [
-    'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-C4.mp3',
-    'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-E4.mp3',
-    'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-G4.mp3'
-  ];
-
-  for (const src of notesSrc) {
-    try {
-      const resp = await fetch(src);
-      if (!resp.ok) throw new Error("Erreur de chargement");
-      const arrayBuffer = await resp.arrayBuffer();
-      const buffer = await new Promise((res, rej) => context.decodeAudioData(arrayBuffer, res, rej));
-      audioBuffers.push(buffer);
-    } catch (e) { console.warn("Son non chargé :", src); }
-  }
-
-  // 3. Lancement de l'animation
-  // Petit délai pour s'assurer que l'instruction disparaît proprement
-  setTimeout(() => {
-    instruction.style.display = "none";
-    startLetters();
-  }, 300);
-}
-
-function playSound() {
-  if (!audioBuffers.length || !context || context.state === 'suspended') return;
-  const source = context.createBufferSource();
-  // Aléatoire sur les sons disponibles
-  source.buffer = audioBuffers[Math.floor(Math.random() * audioBuffers.length)];
+  document.querySelector(".click-instruction").style.opacity = "0";
   
-  // Ajoute un léger décalage de hauteur pour plus de réalisme
-  const playbackRate = 0.95 + Math.random() * 0.1; // Entre 0.95 et 1.05
-  source.playbackRate.setValueAtTime(playbackRate, context.currentTime);
-  
-  // Ajout d'un contrôle de volume pour ne pas que ce soit trop fort
-  const gainNode = context.createGain();
-  gainNode.gain.setValueAtTime(0.7, context.currentTime); // 70% du volume
-
-  source.connect(gainNode);
-  gainNode.connect(context.destination);
-  source.start(0);
-}
-
-function startLetters() {
-  // Ajustez ces valeurs pour le positionnement dans votre Iframe
-  let offsetX = 50; 
   let delay = 0;
-  const wordSpace = 60; // Espace entre les deux mots
-  const charSpace = 35; // Espace entre les lettres
+  let offsetX = 40;
 
-  words.forEach((word, wordIndex) => {
+  words.forEach((word) => {
     word.split("").forEach((char) => {
       const span = document.createElement("span");
       span.className = "letter";
@@ -172,38 +94,30 @@ function startLetters() {
       span.style.left = offsetX + "px";
       document.body.appendChild(span);
 
-      // CORRECTION 1 : requestAnimationFrame laisse le temps au navigateur de positionner la lettre en haut
-      requestAnimationFrame(() => {
-        setTimeout(() => {
-          // CORRECTION 2 : Animation plus douce et hauteur aléatoire
-          const finalY = (220 + Math.random() * 30);
-          span.style.top = finalY + "px";
-          span.style.opacity = 1;
-          
-          span.addEventListener("transitionend", (e) => {
-            if (e.propertyName === "top") {
-              // CORRECTION 3 : Change la couleur AVANT de jouer le son
-              span.style.color = "#FFD700"; // Doré
-              span.classList.add("oscillate");
-              playSound();
-            }
-          }, {once: true});
-        }, delay);
-      });
+      // Lancement de la chute
+      setTimeout(() => {
+        span.style.opacity = "1";
+        span.style.top = (200 + Math.random() * 30) + "px";
 
-      delay += 300; // Délai entre chaque lettre
-      offsetX += charSpace;
+        // Déclenchement de la fin (Son + Couleur) après 1.5s (durée de la transition)
+        setTimeout(() => {
+          span.classList.add("is-final");
+          span.classList.add("oscillate");
+          playHarp();
+        }, 1500);
+
+      }, delay);
+
+      delay += 300;
+      offsetX += 35;
     });
-    // Espace entre le premier et le second mot
-    offsetX += wordSpace;
+    offsetX += 50; // Espace entre les mots
   });
 }
 
-// Double sécurité pour le clic
 const wrapper = document.getElementById("wrapper");
-wrapper.addEventListener("click", init);
-wrapper.addEventListener("touchstart", init);
-
+wrapper.addEventListener("mousedown", startAnimation);
+wrapper.addEventListener("touchstart", startAnimation);
 </script>
 </body>
 </html>
