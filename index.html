@@ -7,9 +7,12 @@
 <style>
   body {
     margin: 0;
+    padding: 0;
+    width: 100vw;
+    height: 100vh; /* Permet de détecter le clic n'importe où sur l'écran */
     overflow: hidden;
     background: transparent;
-    font-family: 'Amethysta';
+    font-family: 'Amethysta', serif;
     cursor: pointer;
   }
   .letter {
@@ -34,15 +37,15 @@
     width: 100%;
     text-align: center;
     font-size: 1.5rem;
-    /* J'ai temporairement mis la couleur en noir au cas où votre fond soit blanc, 
-       remettez #fff si votre Google Site a un fond sombre ! */
-    color: #000; 
+    color: #000; /* ⚠️ Changez en #fff si votre Google Site a un fond sombre ! */
+    transform: translateY(-50%);
+    pointer-events: none; /* Empêche le texte de bloquer le clic sur le body */
   }
 </style>
 </head>
 <body>
 
-<div class="click-instruction">Cliquez pour commencer</div>
+<div class="click-instruction">Cliquez n'importe où pour commencer</div>
 
 <script>
 const words = ["Orpheus", "CARENTHIR"];
@@ -52,9 +55,8 @@ const maxY = 220;
 let audioBuffers = [];
 let context;
 
-// Jouer une note
 function playHarpNote() {
-  if (audioBuffers.length === 0) return;
+  if (audioBuffers.length === 0 || !context) return;
   const buffer = audioBuffers[Math.floor(Math.random() * audioBuffers.length)];
   const source = context.createBufferSource();
   source.buffer = buffer;
@@ -62,10 +64,7 @@ function playHarpNote() {
   source.start(0);
 }
 
-// Charger les sons
 async function loadSounds() {
-  // J'ai remplacé vos URL par des URL de piano fiables pour le test.
-  // Remplacez ces liens par les URL directes vers vos fichiers hébergés sur GitHub.
   const notesSrc = [
     'https://tonejs.github.io/audio/salamander/C4.mp3',
     'https://tonejs.github.io/audio/salamander/D4.mp3',
@@ -81,20 +80,22 @@ async function loadSounds() {
   for (const src of notesSrc) {
     try {
       const response = await fetch(src);
-      // On vérifie que le fichier a bien été trouvé (Statut 200 OK)
-      if (!response.ok) {
-        throw new Error(`Erreur HTTP: ${response.status}`);
-      }
+      if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`);
+      
       const arrayBuffer = await response.arrayBuffer();
-      const buffer = await context.decodeAudioData(arrayBuffer);
+      
+      // Syntax "Promise" modifiée pour être 100% compatible avec Safari et iOS
+      const buffer = await new Promise((resolve, reject) => {
+        context.decodeAudioData(arrayBuffer, resolve, reject);
+      });
+      
       audioBuffers.push(buffer);
     } catch (error) {
-      console.warn(`Erreur lors du chargement de ${src}:`, error);
+      console.warn(`Le son ${src} n'a pas pu être chargé:`, error);
     }
   }
 }
 
-// Chute des lettres
 function startLetters() {
   document.querySelector(".click-instruction").style.display = "none";
   let offsetX = 50;
@@ -128,28 +129,36 @@ function startLetters() {
 
       delay += delayStep;
     });
-    offsetX += 30;
+    offsetX += 30; // Espace entre les deux mots
   });
 }
 
-// Clic pour démarrer
 document.body.addEventListener("click", async () => {
   const instruction = document.querySelector(".click-instruction");
   instruction.textContent = "Chargement des sons…";
   
-  context = new (window.AudioContext || window.webkitAudioContext)();
-  
-  await loadSounds(); // charger avant de démarrer la chute
-  
-  // Sécurité : même si aucun son n'a chargé, on lance l'animation
-  if (audioBuffers.length === 0) {
-    instruction.textContent = "Sons indisponibles. Démarrage...";
+  try {
+    // Création et réveil forcé du contexte audio
+    context = new (window.AudioContext || window.webkitAudioContext)();
+    if (context.state === 'suspended') {
+      await context.resume();
+    }
+    
+    await loadSounds(); 
+    
+    // Quoi qu'il arrive, on lance l'animation
+    if (audioBuffers.length === 0) {
+      instruction.textContent = "Mode sans son activé...";
+      setTimeout(startLetters, 1000);
+    } else {
+      startLetters();
+    }
+  } catch (err) {
+    console.error("Problème inattendu :", err);
+    instruction.textContent = "Démarrage forcé...";
     setTimeout(startLetters, 1000);
-  } else {
-    startLetters();
   }
 }, { once: true });
-
 </script>
 
 </body>
