@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Lettre Harpe</title>
+<title>Lettre Harpe Séquentielle</title>
 <style>
   body {
     margin: 0;
@@ -16,7 +16,7 @@
     top: -50px; /* départ hors écran */
     opacity: 0;
     transition: top 1.5s ease-out, opacity 1s ease-out, color 0.5s;
-    color: #fff;
+    color: #808080; /* couleur de départ gris */
   }
 </style>
 </head>
@@ -61,8 +61,11 @@ function playHarpNote() {
   source.start(0);
 }
 
-// Création des lettres
+// Création des lettres avec chute séquentielle
 let offsetX = 50;
+let delay = 0;
+const delayStep = 300; // temps entre chaque lettre en ms
+
 words.forEach(word => {
   word.split("").forEach(letter => {
     const span = document.createElement("span");
@@ -73,7 +76,7 @@ words.forEach(word => {
     span.style.left = offsetX + "px";
     offsetX += 30;
 
-    // Animation
+    // Animation séquentielle
     setTimeout(() => {
       const finalY = minY + Math.random() * (maxY - minY);
       span.style.top = finalY + "px";
@@ -82,12 +85,14 @@ words.forEach(word => {
       // Détecter fin de transition pour jouer le son et changer la couleur
       span.addEventListener("transitionend", function handler(e) {
         if (e.propertyName === "top") {
-          span.style.color = `hsl(${Math.random() * 360}, 80%, 70%)`;
+          span.style.color = "#FFD700"; // doré à l'arrêt
           playHarpNote();
           span.removeEventListener("transitionend", handler);
         }
       });
-    }, Math.random() * 1000);
+    }, delay);
+
+    delay += delayStep; // prochaine lettre tombe après
   });
   offsetX += 30; // espace entre mots
 });
