@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Lettre Harpe Séquentielle</title>
+<title>Lettre Harpe Séquentielle avec Oscillation</title>
 <link href='https://fonts.googleapis.com/css?family=Amethysta' rel='stylesheet'>
 <style>
   body {
@@ -10,6 +10,7 @@
     overflow: hidden;
     background: transparent;
     font-family: 'Amethysta';
+    cursor: pointer;
   }
   .letter {
     position: absolute;
@@ -19,9 +20,33 @@
     transition: top 1.5s ease-out, opacity 1s ease-out, color 0.5s;
     color: #808080; /* couleur de départ gris */
   }
+
+  /* Animation d'oscillation après l'arrêt */
+  @keyframes oscillate {
+    0% { transform: translateX(0); }
+    25% { transform: translateX(-5px); }
+    50% { transform: translateX(5px); }
+    75% { transform: translateX(-3px); }
+    100% { transform: translateX(0); }
+  }
+
+  .oscillate {
+    animation: oscillate 0.5s ease-out;
+  }
+
+  .click-instruction {
+    position: absolute;
+    top: 50%;
+    width: 100%;
+    text-align: center;
+    font-size: 1.5rem;
+    color: #fff;
+  }
 </style>
 </head>
 <body>
+
+<div class="click-instruction">Cliquez pour commencer</div>
 
 <script>
 const words = ["Orpheus", "CARENTHIR"];
@@ -62,41 +87,54 @@ function playHarpNote() {
   source.start(0);
 }
 
-// Création des lettres avec chute séquentielle
-let offsetX = 50;
-let delay = 0;
-const delayStep = 300; // temps entre chaque lettre en ms
+// Fonction pour lancer la chute des lettres
+function startLetters() {
+  document.querySelector(".click-instruction").style.display = "none";
 
-words.forEach(word => {
-  word.split("").forEach(letter => {
-    const span = document.createElement("span");
-    span.classList.add("letter");
-    span.textContent = letter;
-    document.body.appendChild(span);
+  let offsetX = 50;
+  let delay = 0;
+  const delayStep = 300; // temps entre chaque lettre en ms
 
-    span.style.left = offsetX + "px";
-    offsetX += 30;
+  words.forEach(word => {
+    word.split("").forEach(letter => {
+      const span = document.createElement("span");
+      span.classList.add("letter");
+      span.textContent = letter;
+      document.body.appendChild(span);
 
-    // Animation séquentielle
-    setTimeout(() => {
-      const finalY = minY + Math.random() * (maxY - minY);
-      span.style.top = finalY + "px";
-      span.style.opacity = 1;
+      span.style.left = offsetX + "px";
+      offsetX += 30;
 
-      // Détecter fin de transition pour jouer le son et changer la couleur
-      span.addEventListener("transitionend", function handler(e) {
-        if (e.propertyName === "top") {
-          span.style.color = "#FFD700"; // doré à l'arrêt
-          playHarpNote();
-          span.removeEventListener("transitionend", handler);
-        }
-      });
-    }, delay);
+      setTimeout(() => {
+        const finalY = minY + Math.random() * (maxY - minY);
+        span.style.top = finalY + "px";
+        span.style.opacity = 1;
 
-    delay += delayStep; // prochaine lettre tombe après
+        // Détecter fin de transition pour jouer le son, changer la couleur et lancer l'oscillation
+        span.addEventListener("transitionend", function handler(e) {
+          if (e.propertyName === "top") {
+            span.style.color = "#FFD700"; // doré à l'arrêt
+            playHarpNote();
+            // Ajouter l'oscillation
+            span.classList.add("oscillate");
+            span.removeEventListener("transitionend", handler);
+          }
+        });
+      }, delay);
+
+      delay += delayStep;
+    });
+    offsetX += 30; // espace entre mots
   });
-  offsetX += 30; // espace entre mots
-});
+}
+
+// Démarrer l'audio et la chute au clic
+document.body.addEventListener("click", () => {
+  context.resume().then(() => {
+    startLetters();
+  });
+}, { once: true });
+
 </script>
 
 </body>
