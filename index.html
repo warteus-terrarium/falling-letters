@@ -2,61 +2,95 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Pluie de lettres</title>
+<title>Lettre Harpe</title>
 <style>
-  html, body {
+  body {
     margin: 0;
-    padding: 0;
-    height: 100%;
     overflow: hidden;
-    background: transparent; /* couleur de fond */
-    font-family: Amethysta;
+    background: #111;
+    font-family: 'Arial', sans-serif;
   }
-
   .letter {
     position: absolute;
-    top: -50px;
-    font-size: 32px;
-    font-weight: bold;
-    color: #808080; /* gris du web, modifiable */
-    animation: fall linear forwards;
-  }
-
-  @keyframes fall {
-    to {
-      transform: translateY(110vh);
-      opacity: 0;
-    }
+    font-size: 2rem;
+    top: -50px; /* départ hors écran */
+    opacity: 0;
+    transition: top 1.5s ease-out, opacity 1s ease-out, color 0.5s;
+    color: #fff;
   }
 </style>
 </head>
 <body>
 
 <script>
-const text = "Orpheus Caranthir"; // Modifie ici ton texte
-const letters = text.split("");
+const words = ["BONJOUR", "MONDE", "HARPE", "MUSIQUE"];
+const minY = 200;
+const maxY = 220;
 
-// Fonction pour créer une lettre
-function createLetter(letter) {
-  const span = document.createElement("span");
-  span.className = "letter";
-  span.innerText = letter;
+// Précharger les sons de harpe
+const notesSrc = [
+  'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-C4.mp3',
+  'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-D4.mp3',
+  'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-E4.mp3',
+  'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-F4.mp3',
+  'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-G4.mp3',
+  'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-A4.mp3',
+  'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-B4.mp3'
+];
+const audioBuffers = [];
+const context = new (window.AudioContext || window.webkitAudioContext)();
 
-  span.style.left = Math.random() * window.innerWidth + "px";
-  span.style.animationDuration = (2 + Math.random() * 3) + "s";
+// Charger tous les sons
+async function loadSounds() {
+  for (const src of notesSrc) {
+    const response = await fetch(src);
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = await context.decodeAudioData(arrayBuffer);
+    audioBuffers.push(buffer);
+  }
+}
+loadSounds();
 
-  document.body.appendChild(span);
-
-  setTimeout(() => {
-    span.remove(); // Supprime après animation pour garder le DOM léger
-  }, 5000);
+// Jouer une note de harpe aléatoire
+function playHarpNote() {
+  if (audioBuffers.length === 0) return;
+  const buffer = audioBuffers[Math.floor(Math.random() * audioBuffers.length)];
+  const source = context.createBufferSource();
+  source.buffer = buffer;
+  source.connect(context.destination);
+  source.start(0);
 }
 
-// Pluie continue de lettres
-setInterval(() => {
-  const randomLetter = letters[Math.floor(Math.random() * letters.length)];
-  createLetter(randomLetter);
-}, 150);
+// Création des lettres
+let offsetX = 50;
+words.forEach(word => {
+  word.split("").forEach(letter => {
+    const span = document.createElement("span");
+    span.classList.add("letter");
+    span.textContent = letter;
+    document.body.appendChild(span);
+
+    span.style.left = offsetX + "px";
+    offsetX += 30;
+
+    // Animation
+    setTimeout(() => {
+      const finalY = minY + Math.random() * (maxY - minY);
+      span.style.top = finalY + "px";
+      span.style.opacity = 1;
+
+      // Détecter fin de transition pour jouer le son et changer la couleur
+      span.addEventListener("transitionend", function handler(e) {
+        if (e.propertyName === "top") {
+          span.style.color = `hsl(${Math.random() * 360}, 80%, 70%)`;
+          playHarpNote();
+          span.removeEventListener("transitionend", handler);
+        }
+      });
+    }, Math.random() * 1000);
+  });
+  offsetX += 30; // espace entre mots
+});
 </script>
 
 </body>
