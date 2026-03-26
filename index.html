@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Lettre Harpe Séquentielle avec Oscillation et Son</title>
+<title>Lettre Harpe Séquentielle</title>
 <link href='https://fonts.googleapis.com/css?family=Amethysta' rel='stylesheet'>
 <style>
   body {
@@ -27,9 +27,7 @@
     75% { transform: translateX(-3px); }
     100% { transform: translateX(0); }
   }
-  .oscillate {
-    animation: oscillate 0.5s ease-out;
-  }
+  .oscillate { animation: oscillate 0.5s ease-out; }
   .click-instruction {
     position: absolute;
     top: 50%;
@@ -50,9 +48,9 @@ const minY = 200;
 const maxY = 220;
 
 let audioBuffers = [];
-let context; // ne sera créé qu'après clic
+let context;
 
-// Jouer une note de harpe aléatoire
+// Jouer une note
 function playHarpNote() {
   if (audioBuffers.length === 0) return;
   const buffer = audioBuffers[Math.floor(Math.random() * audioBuffers.length)];
@@ -62,7 +60,7 @@ function playHarpNote() {
   source.start(0);
 }
 
-// Charger tous les sons
+// Charger les sons
 async function loadSounds() {
   const notesSrc = [
     'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-C4.mp3',
@@ -82,10 +80,9 @@ async function loadSounds() {
   }
 }
 
-// Fonction pour lancer la chute des lettres
+// Chute des lettres
 function startLetters() {
   document.querySelector(".click-instruction").style.display = "none";
-
   let offsetX = 50;
   let delay = 0;
   const delayStep = 300;
@@ -107,9 +104,9 @@ function startLetters() {
 
         span.addEventListener("transitionend", function handler(e) {
           if (e.propertyName === "top") {
-            span.style.color = "#FFD700"; // doré
-            playHarpNote();              // jouer la note
-            span.classList.add("oscillate"); // oscillation finale
+            span.style.color = "#FFD700";
+            playHarpNote();
+            span.classList.add("oscillate");
             span.removeEventListener("transitionend", handler);
           }
         });
@@ -121,12 +118,14 @@ function startLetters() {
   });
 }
 
-// Démarrer le tout au clic
+// Clic pour démarrer
 document.body.addEventListener("click", async () => {
+  document.querySelector(".click-instruction").textContent = "Chargement des sons…";
   context = new (window.AudioContext || window.webkitAudioContext)();
-  await loadSounds();      // charger les sons après création du context
-  startLetters();           // lancer la chute des lettres
+  await loadSounds(); // charger avant de démarrer la chute
+  startLetters();
 }, { once: true });
+
 </script>
 
 </body>
