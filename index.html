@@ -7,10 +7,11 @@
   html, body {
     margin: 0; padding: 0;
     width: 100%; height: 100%;
-    background: transparent;
+    background: black;
     overflow: hidden;
     font-family: 'Amethysta', serif;
   }
+
   #wrapper {
     position: absolute;
     width: 100%; height: 100%;
@@ -18,123 +19,161 @@
     display: flex; align-items: center; justify-content: center;
     z-index: 10;
   }
+
   .click-instruction {
     font-size: 1.4rem;
     color: #888;
     text-align: center;
     transition: opacity 0.5s;
   }
+
   .letter {
     position: absolute;
-    font-size: 2.2rem;
+    font-size: 2.4rem;
     top: -100px;
     opacity: 0;
     color: #808080;
     transition: top 1.5s ease-out, opacity 1s ease-out, color 0.6s ease;
-    pointer-events: none;
     font-weight: bold;
+    pointer-events: auto;
   }
+
   .is-final {
-    color: #FFD700 !important;
-    text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+    color: #FFD700;
+    text-shadow: 0 0 15px rgba(255, 215, 0, 0.8);
   }
+
   @keyframes oscillate {
     0% { transform: translateX(0); }
-    50% { transform: translateX(5px); }
+    50% { transform: translateX(6px); }
     100% { transform: translateX(0); }
   }
-  .oscillate { animation: oscillate 0.5s ease-out; }
+
+  .oscillate {
+    animation: oscillate 0.5s ease-out;
+  }
 </style>
 </head>
 <body>
 
 <div id="wrapper">
-  <div class="click-instruction">Cliquez ici pour l'éveil d'Orpheus</div>
+  <div class="click-instruction">Cliquez pour éveiller Orpheus</div>
 </div>
 
 <script>
 const words = ["Orpheus", "CARENTHIR"];
-const sounds = [
-  'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-C4.mp3',
-  'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-E4.mp3',
-  'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-G4.mp3'
+
+// 🎼 Gamme de Do majeur (fréquences)
+const scale = [
+  261.63, // C
+  293.66, // D
+  329.63, // E
+  349.23, // F
+  392.00, // G
+  440.00, // A
+  493.88  // B
 ];
 
-// Pool audio
-const audioPool = sounds.map(src => {
-  const a = new Audio(src);
-  a.preload = "auto";
-  return a;
-});
-
+let audioCtx;
 let started = false;
-let audioUnlocked = false;
 
-// 🔓 Débloque l’audio UNE fois
-function unlockAudio() {
-  if (audioUnlocked) return;
-  audioUnlocked = true;
-
-  const dummy = new Audio(sounds[0]);
-  dummy.volume = 0;
-  dummy.play().then(() => {
-    dummy.pause();
-  }).catch(() => {});
+// 🔓 Init audio
+function initAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === "suspended") {
+    audioCtx.resume();
+  }
 }
 
-// 🔊 Lecture fiable
-function playHarp() {
-  const sound = audioPool[Math.floor(Math.random() * audioPool.length)];
-  const clone = sound.cloneNode();
-  clone.volume = 0.6;
+// 🎧 Son "harpe-like"
+function playNote(freq, pan = 0) {
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  const panner = audioCtx.createStereoPanner();
 
-  clone.play().catch(() => {
-    console.log("Lecture bloquée");
-  });
+  osc.type = "triangle"; // son doux type harpe
+  osc.frequency.value = freq;
+
+  // enveloppe douce
+  gain.gain.setValueAtTime(0, audioCtx.currentTime);
+  gain.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.2);
+
+  // stéréo
+  panner.pan.value = pan;
+
+  osc.connect(gain);
+  gain.connect(panner);
+  panner.connect(audioCtx.destination);
+
+  osc.start();
+  osc.stop(audioCtx.currentTime + 1.3);
+}
+
+// 🎯 mapping position → stéréo
+function getPan(x) {
+  const width = window.innerWidth;
+  return (x / width) * 2 - 1; // -1 (gauche) → +1 (droite)
+}
+
+// 🎼 note selon index
+function getNote(i) {
+  return scale[i % scale.length];
 }
 
 function startAnimation() {
   if (started) return;
   started = true;
 
-  unlockAudio(); // ✅ clé de la solution
+  initAudio();
 
   document.querySelector(".click-instruction").style.opacity = "0";
-  
-  let delay = 0;
-  let offsetX = 40;
 
-  words.forEach((word) => {
-    word.split("").forEach((char) => {
+  let delay = 0;
+  let offsetX = 60;
+  let noteIndex = 0;
+
+  words.forEach(word => {
+    word.split("").forEach(char => {
       const span = document.createElement("span");
       span.className = "letter";
       span.textContent = char;
       span.style.left = offsetX + "px";
       document.body.appendChild(span);
 
+      const myNote = getNote(noteIndex++);
+      const myPan = getPan(offsetX);
+
+      // interaction hover ✨
+      span.addEventListener("mouseenter", () => {
+        playNote(myNote, myPan);
+      });
+
       setTimeout(() => {
         span.style.opacity = "1";
-        span.style.top = (200 + Math.random() * 30) + "px";
+        span.style.top = (200 + Math.random() * 40) + "px";
 
         setTimeout(() => {
           span.classList.add("is-final");
           span.classList.add("oscillate");
-          playHarp(); // ✅ fonctionne maintenant
+
+          playNote(myNote, myPan);
+
         }, 1500);
 
       }, delay);
 
-      delay += 300;
-      offsetX += 35;
+      delay += 250;
+      offsetX += 40;
     });
 
-    offsetX += 50;
+    offsetX += 60;
   });
 }
 
 const wrapper = document.getElementById("wrapper");
-
-// 👉 Important : click plutôt que mousedown (plus fiable mobile + desktop)
 wrapper.addEventListener("click", startAnimation);
 wrapper.addEventListener("touchstart", startAnimation);
 </script>
