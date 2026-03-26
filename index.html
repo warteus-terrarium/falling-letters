@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Lettre Harpe Séquentielle avec Oscillation</title>
+<title>Lettre Harpe Séquentielle avec Oscillation et Son</title>
 <link href='https://fonts.googleapis.com/css?family=Amethysta' rel='stylesheet'>
 <style>
   body {
@@ -15,13 +15,11 @@
   .letter {
     position: absolute;
     font-size: 2rem;
-    top: -50px; /* départ hors écran */
+    top: -50px;
     opacity: 0;
     transition: top 1.5s ease-out, opacity 1s ease-out, color 0.5s;
-    color: #808080; /* couleur de départ gris */
+    color: #808080;
   }
-
-  /* Animation d'oscillation après l'arrêt */
   @keyframes oscillate {
     0% { transform: translateX(0); }
     25% { transform: translateX(-5px); }
@@ -29,11 +27,9 @@
     75% { transform: translateX(-3px); }
     100% { transform: translateX(0); }
   }
-
   .oscillate {
     animation: oscillate 0.5s ease-out;
   }
-
   .click-instruction {
     position: absolute;
     top: 50%;
@@ -53,29 +49,8 @@ const words = ["Orpheus", "CARENTHIR"];
 const minY = 200;
 const maxY = 220;
 
-// Précharger les sons de harpe
-const notesSrc = [
-  'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-C4.mp3',
-  'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-D4.mp3',
-  'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-E4.mp3',
-  'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-F4.mp3',
-  'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-G4.mp3',
-  'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-A4.mp3',
-  'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-B4.mp3'
-];
-const audioBuffers = [];
-const context = new (window.AudioContext || window.webkitAudioContext)();
-
-// Charger tous les sons
-async function loadSounds() {
-  for (const src of notesSrc) {
-    const response = await fetch(src);
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = await context.decodeAudioData(arrayBuffer);
-    audioBuffers.push(buffer);
-  }
-}
-loadSounds();
+let audioBuffers = [];
+let context; // ne sera créé qu'après clic
 
 // Jouer une note de harpe aléatoire
 function playHarpNote() {
@@ -87,13 +62,33 @@ function playHarpNote() {
   source.start(0);
 }
 
+// Charger tous les sons
+async function loadSounds() {
+  const notesSrc = [
+    'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-C4.mp3',
+    'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-D4.mp3',
+    'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-E4.mp3',
+    'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-F4.mp3',
+    'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-G4.mp3',
+    'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-A4.mp3',
+    'https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio/harp-B4.mp3'
+  ];
+  audioBuffers = [];
+  for (const src of notesSrc) {
+    const response = await fetch(src);
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = await context.decodeAudioData(arrayBuffer);
+    audioBuffers.push(buffer);
+  }
+}
+
 // Fonction pour lancer la chute des lettres
 function startLetters() {
   document.querySelector(".click-instruction").style.display = "none";
 
   let offsetX = 50;
   let delay = 0;
-  const delayStep = 300; // temps entre chaque lettre en ms
+  const delayStep = 300;
 
   words.forEach(word => {
     word.split("").forEach(letter => {
@@ -110,13 +105,11 @@ function startLetters() {
         span.style.top = finalY + "px";
         span.style.opacity = 1;
 
-        // Détecter fin de transition pour jouer le son, changer la couleur et lancer l'oscillation
         span.addEventListener("transitionend", function handler(e) {
           if (e.propertyName === "top") {
-            span.style.color = "#FFD700"; // doré à l'arrêt
-            playHarpNote();
-            // Ajouter l'oscillation
-            span.classList.add("oscillate");
+            span.style.color = "#FFD700"; // doré
+            playHarpNote();              // jouer la note
+            span.classList.add("oscillate"); // oscillation finale
             span.removeEventListener("transitionend", handler);
           }
         });
@@ -124,17 +117,16 @@ function startLetters() {
 
       delay += delayStep;
     });
-    offsetX += 30; // espace entre mots
+    offsetX += 30;
   });
 }
 
-// Démarrer l'audio et la chute au clic
-document.body.addEventListener("click", () => {
-  context.resume().then(() => {
-    startLetters();
-  });
+// Démarrer le tout au clic
+document.body.addEventListener("click", async () => {
+  context = new (window.AudioContext || window.webkitAudioContext)();
+  await loadSounds();      // charger les sons après création du context
+  startLetters();           // lancer la chute des lettres
 }, { once: true });
-
 </script>
 
 </body>
