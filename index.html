@@ -2,27 +2,30 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<link href='https://fonts.googleapis.com/css?family=Amethysta' rel='stylesheet'>
+<link href="https://fonts.googleapis.com/css?family=Amethysta" rel="stylesheet">
 <style>
 html, body {
-  margin: 0; padding: 0;
-  width: 100%; height: 100%;
-  background: transparent;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: black;
   overflow: hidden;
-  font-family: 'Amethysta', serif;
+  font-family: "Amethysta", serif;
 }
 
 canvas {
   position: absolute;
-  top: 0;
-  left: 0;
+  inset: 0;
   pointer-events: none;
 }
 
 #wrapper {
   position: absolute;
-  width: 100%; height: 100%;
-  display: flex; align-items: center; justify-content: center;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
   z-index: 2;
 }
@@ -30,24 +33,39 @@ canvas {
 .click-instruction {
   color: #888;
   font-size: 1.4rem;
-  transition: opacity 0.5s;
+  text-align: center;
+  transition: opacity 0.5s ease;
 }
 
 .letter {
   position: absolute;
-  font-size: 2.4rem;
   top: -100px;
   opacity: 0;
   color: #808080;
-  transition: top 1.5s ease-out, opacity 1s ease-out, color 0.4s ease;
+  font-size: 2.4rem;
   font-weight: bold;
   pointer-events: auto;
   z-index: 3;
+  transition:
+    top 1.5s ease-out,
+    opacity 1s ease-out,
+    color 0.35s ease,
+    text-shadow 0.35s ease;
+  will-change: top, opacity, color, transform, text-shadow;
 }
 
 .gold {
   color: #FFD700;
-  text-shadow: 0 0 15px rgba(255,215,0,0.9);
+  text-shadow:
+    0 0 8px rgba(255, 215, 0, 0.85),
+    0 0 18px rgba(255, 215, 0, 0.45);
+}
+
+.glitching {
+  text-shadow:
+    -2px 0 rgba(0, 180, 255, 0.9),
+    2px 0 rgba(100, 220, 255, 0.8),
+    0 0 14px rgba(0, 180, 255, 0.55);
 }
 </style>
 </head>
@@ -62,229 +80,422 @@ canvas {
 <script>
 const words = ["Orpheus", "CARENTHIR"];
 
-let audioCtx;
-let started = false;
-let allLetters = [];
-let landedCount = 0;
+/* =========================
+   AUDIO
+========================= */
+let audioCtx = null;
 
-// AUDIO
 function initAudio() {
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  if (audioCtx.state === "suspended") audioCtx.resume();
-}
-
-// GAMME & PROGRESSION
-const scale = [0,2,3,5,7,8,10];
-const progression = [[0,2,4],[5,0,2],[3,5,0],[4,6,1]];
-let chordStep = 0;
-
-function midiToFreq(m){return 440*Math.pow(2,(m-69)/12);}
-function getQuantizedNote(y,chord){
-  const minY=180,maxY=260;
-  let t=(y-minY)/(maxY-minY); t=Math.max(0,Math.min(1,t));
-  const octave=Math.floor(3+(1-t)*2);
-  const degree=chord[Math.floor(Math.random()*chord.length)];
-  const midi=57+scale[degree]+(octave-4)*12;
-  return midiToFreq(midi);
-}
-function getCurrentChord(){return progression[chordStep%progression.length];}
-
-// ACCORD
-function playChord(freq,pan){
-  const ratios=[1,1.2,1.5];
-  ratios.forEach((r,i)=>{
-    const osc=audioCtx.createOscillator();
-    const gain=audioCtx.createGain();
-    const panner=audioCtx.createStereoPanner();
-    osc.type="triangle"; osc.frequency.value=freq*r;
-    gain.gain.setValueAtTime(0,audioCtx.currentTime);
-    gain.gain.linearRampToValueAtTime(0.18,audioCtx.currentTime+0.05);
-    gain.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+1.8);
-    panner.pan.value=pan;
-    osc.connect(gain); gain.connect(panner); panner.connect(audioCtx.destination);
-    osc.start(audioCtx.currentTime+i*0.04); osc.stop(audioCtx.currentTime+2);
-  });
-}
-function getPan(x){return (x/window.innerWidth)*2-1;}
-
-// CANVAS
-const canvas=document.getElementById("canvas");
-const ctx=canvas.getContext("2d");
-let particles=[], constellationLines=[];
-
-function resize(){canvas.width=window.innerWidth; canvas.height=window.innerHeight;}
-resize(); window.addEventListener("resize",resize);
-
-function spawnParticles(x,y){
-  for(let i=0;i<15;i++){particles.push({x,y,vx:(Math.random()-0.5)*2,vy:(Math.random()-0.5)*2,life:1});}
-}
-
-// BUILD CONSTELLATION
-function buildConstellation(){
-  constellationLines=[];
-  for(let i=0;i<allLetters.length-1;i++){
-    const a=allLetters[i].getBoundingClientRect();
-    const b=allLetters[i+1].getBoundingClientRect();
-    constellationLines.push({x1:a.left+a.width/2,y1:a.top+a.height/2,x2:b.left+b.width/2,y2:b.top+b.height/2,progress:0,life:1});
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === "suspended") {
+    audioCtx.resume();
   }
 }
 
-// ANIMATE
-function animate(){
-  ctx.clearRect(0,0,canvas.width,canvas.height);
+const scale = [0, 2, 3, 5, 7, 8, 10]; // la mineur naturel
+const progression = [
+  [0, 2, 4], // Am
+  [5, 0, 2], // F
+  [3, 5, 0], // C
+  [4, 6, 1]  // G
+];
+let chordStep = 0;
 
-  // PARTICULES
-  particles.forEach(p=>{
-    p.x+=p.vx; p.y+=p.vy; p.life-=0.02;
-    ctx.fillStyle="rgba(255,215,0,"+p.life+")";
-    ctx.beginPath(); ctx.arc(p.x,p.y,2,0,Math.PI*2); ctx.fill();
+function midiToFreq(midi) {
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+
+function getCurrentChord() {
+  return progression[chordStep % progression.length];
+}
+
+function getQuantizedNote(y, chord) {
+  const minY = 180;
+  const maxY = 260;
+
+  let t = (y - minY) / (maxY - minY);
+  t = Math.max(0, Math.min(1, t));
+
+  const octave = Math.floor(3 + (1 - t) * 2); // 3 à 5
+  const degree = chord[Math.floor(Math.random() * chord.length)];
+  const midi = 57 + scale[degree] + (octave - 4) * 12; // base A3/A4-ish
+  return midiToFreq(midi);
+}
+
+function getPan(x) {
+  return (x / window.innerWidth) * 2 - 1;
+}
+
+function playChord(freq, pan) {
+  const ratios = [1, 1.2, 1.5];
+
+  ratios.forEach((r, i) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    const panner = audioCtx.createStereoPanner();
+    const filter = audioCtx.createBiquadFilter();
+
+    osc.type = "triangle";
+    osc.frequency.value = freq * r;
+
+    filter.type = "lowpass";
+    filter.frequency.value = 1800;
+
+    gain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.16, audioCtx.currentTime + 0.045);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.9);
+
+    panner.pan.value = pan;
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(panner);
+    panner.connect(audioCtx.destination);
+
+    osc.start(audioCtx.currentTime + i * 0.035);
+    osc.stop(audioCtx.currentTime + 2);
   });
-  particles=particles.filter(p=>p.life>0);
+}
 
-  // CONSTELLATION
-  constellationLines.forEach(line=>{
-    if(line.progress<1){
-      line.progress+=0.02;
-      const x=line.x1+(line.x2-line.x1)*line.progress;
-      const y=line.y1+(line.y2-line.y1)*line.progress;
-      ctx.strokeStyle="rgba(255,215,0,0.5)";
-      ctx.lineWidth=1;
+function playStaticNoise(duration = 1.2) {
+  const sampleRate = audioCtx.sampleRate;
+  const bufferSize = Math.ceil(sampleRate * duration);
+  const buffer = audioCtx.createBuffer(1, bufferSize, sampleRate);
+  const data = buffer.getChannelData(0);
+
+  // Bruit blanc avec un léger "grain" plus agressif
+  for (let i = 0; i < bufferSize; i++) {
+    const white = Math.random() * 2 - 1;
+    const crackle = Math.random() > 0.985 ? (Math.random() * 2 - 1) * 2.4 : 0;
+    data[i] = white * 0.75 + crackle * 0.25;
+  }
+
+  const source = audioCtx.createBufferSource();
+  const highpass = audioCtx.createBiquadFilter();
+  const bandpass = audioCtx.createBiquadFilter();
+  const gain = audioCtx.createGain();
+
+  highpass.type = "highpass";
+  highpass.frequency.value = 900;
+
+  bandpass.type = "bandpass";
+  bandpass.frequency.value = 2800;
+  bandpass.Q.value = 0.8;
+
+  gain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+  gain.gain.linearRampToValueAtTime(0.95, audioCtx.currentTime + 0.03);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+
+  source.buffer = buffer;
+  source.connect(highpass);
+  highpass.connect(bandpass);
+  bandpass.connect(gain);
+  gain.connect(audioCtx.destination);
+
+  source.start();
+  source.stop(audioCtx.currentTime + duration);
+}
+
+/* =========================
+   CANVAS
+========================= */
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resizeCanvas();
+window.addEventListener("resize", resizeCanvas);
+
+let particles = [];
+let constellationLines = [];
+
+/* Line states:
+   drawing -> visible -> glitch -> dead
+*/
+function createConstellationLine(fromEl, toEl) {
+  const a = fromEl.getBoundingClientRect();
+  const b = toEl.getBoundingClientRect();
+
+  constellationLines.push({
+    x1: a.left + a.width / 2,
+    y1: a.top + a.height / 2,
+    x2: b.left + b.width / 2,
+    y2: b.top + b.height / 2,
+    progress: 0,
+    state: "drawing",
+    alpha: 0.55
+  });
+}
+
+function spawnParticles(x, y) {
+  for (let i = 0; i < 18; i++) {
+    particles.push({
+      x,
+      y,
+      vx: (Math.random() - 0.5) * 2.5,
+      vy: (Math.random() - 0.5) * 2.5,
+      life: 1,
+      color: "gold"
+    });
+  }
+}
+
+function spawnBlueGlitchParticles(x, y) {
+  for (let i = 0; i < 22; i++) {
+    particles.push({
+      x,
+      y,
+      vx: (Math.random() - 0.5) * 4.8,
+      vy: (Math.random() - 0.5) * 4.8,
+      life: 1,
+      color: "blue"
+    });
+  }
+}
+
+/* =========================
+   GLITCH STATE
+========================= */
+let started = false;
+let landedCount = 0;
+let allLetters = [];
+let landedLetters = [];
+let glitchActive = false;
+
+function startFinalGlitch() {
+  glitchActive = true;
+
+  allLetters.forEach((letter) => {
+    letter.classList.add("glitching");
+
+    const rect = letter.getBoundingClientRect();
+    spawnBlueGlitchParticles(
+      rect.left + rect.width / 2,
+      rect.top + rect.height / 2
+    );
+  });
+
+  constellationLines.forEach(line => {
+    if (line.state !== "dead") {
+      line.state = "glitch";
+      line.alpha = 1;
+    }
+  });
+
+  playStaticNoise(1.35);
+
+  setTimeout(() => {
+    allLetters.forEach((letter) => {
+      letter.classList.remove("gold");
+      letter.classList.remove("glitching");
+      letter.style.color = "#808080";
+      letter.style.transform = "translate(0px, 0px)";
+    });
+
+    glitchActive = false;
+  }, 1350);
+}
+
+/* =========================
+   ANIMATION LOOP
+========================= */
+function animate() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Particules
+  particles.forEach(p => {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life -= (p.color === "blue" ? 0.03 : 0.02);
+
+    if (p.color === "blue") {
+      ctx.fillStyle = `rgba(80, 210, 255, ${Math.max(0, p.life)})`;
+    } else {
+      ctx.fillStyle = `rgba(255, 215, 0, ${Math.max(0, p.life)})`;
+    }
+
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.color === "blue" ? 2.4 : 2, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  particles = particles.filter(p => p.life > 0);
+
+  // Constellation
+  constellationLines.forEach(line => {
+    if (line.state === "drawing") {
+      line.progress += 0.04;
+      if (line.progress >= 1) {
+        line.progress = 1;
+        line.state = "visible";
+      }
+
+      const x = line.x1 + (line.x2 - line.x1) * line.progress;
+      const y = line.y1 + (line.y2 - line.y1) * line.progress;
+
+      const alpha = 0.38 + Math.random() * 0.18;
+      ctx.strokeStyle = `rgba(255, 215, 140, ${alpha})`;
+      ctx.lineWidth = 1.2;
       ctx.beginPath();
-      ctx.moveTo(line.x1,line.y1);
-      ctx.lineTo(x,y);
+      ctx.moveTo(line.x1, line.y1);
+      ctx.lineTo(x, y);
       ctx.stroke();
-    }else{
-      if(line.glitch){
-        const alpha=Math.random()*0.8+0.2;
-        ctx.strokeStyle="rgba(0,200,255,"+alpha+")";
-        ctx.lineWidth=1.5;
-        ctx.beginPath();
-        ctx.moveTo(line.x1,line.y1);
-        ctx.lineTo(line.x2,line.y2);
-        ctx.stroke();
-        line.life-=0.05;
-      }else{
-        line.life-=0.002;
-        ctx.strokeStyle="rgba(255,215,0,"+line.life+")";
-        ctx.lineWidth=1;
-        ctx.beginPath();
-        ctx.moveTo(line.x1,line.y1);
-        ctx.lineTo(line.x2,line.y2);
-        ctx.stroke();
+    }
+
+    else if (line.state === "visible") {
+      const alpha = 0.30 + Math.random() * 0.15;
+      ctx.strokeStyle = `rgba(255, 225, 170, ${alpha})`;
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      ctx.moveTo(line.x1, line.y1);
+      ctx.lineTo(line.x2, line.y2);
+      ctx.stroke();
+    }
+
+    else if (line.state === "glitch") {
+      line.alpha -= 0.045;
+
+      const dx1 = (Math.random() - 0.5) * 5;
+      const dy1 = (Math.random() - 0.5) * 5;
+      const dx2 = (Math.random() - 0.5) * 5;
+      const dy2 = (Math.random() - 0.5) * 5;
+
+      const alpha = Math.max(0, line.alpha);
+      const blue = 180 + Math.floor(Math.random() * 60);
+
+      ctx.strokeStyle = `rgba(40, ${blue}, 255, ${alpha})`;
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(line.x1 + dx1, line.y1 + dy1);
+      ctx.lineTo(line.x2 + dx2, line.y2 + dy2);
+      ctx.stroke();
+
+      if (line.alpha <= 0) {
+        line.state = "dead";
       }
     }
   });
-  constellationLines=constellationLines.filter(l=>l.life>0);
 
-  // JITTER GLITCH sur lettres
-  if(started && glitchActive){
-    allLetters.forEach(l=>{
-      l.style.transform=`translate(${(Math.random()-0.5)*6}px, ${(Math.random()-0.5)*6}px)`;
-      const colors=["#00ffff","#ff00ff","#00ffff","#ff00ff","#808080","#FFD700"];
-      l.style.color=colors[Math.floor(Math.random()*colors.length)];
+  constellationLines = constellationLines.filter(line => line.state !== "dead");
+
+  // Jitter lettres
+  if (glitchActive) {
+    allLetters.forEach((letter, i) => {
+      const x = (Math.random() - 0.5) * 8;
+      const y = (Math.random() - 0.5) * 8;
+      letter.style.transform = `translate(${x}px, ${y}px)`;
+
+      const palette = ["#58d7ff", "#9be7ff", "#1db8ff", "#7fe0ff", "#b7efff"];
+      const c = palette[(Math.floor(Math.random() * palette.length) + i) % palette.length];
+      letter.style.color = c;
     });
   }
 
   requestAnimationFrame(animate);
 }
+animate();
 
-// RYTHME
-const rhythm=[180,120,260,140,320,200];
+/* =========================
+   MAIN
+========================= */
+const rhythm = [180, 120, 260, 140, 320, 200];
+const wrapper = document.getElementById("wrapper");
 
-// BRUIT BLANC TV
-function playWhiteNoise(duration=0.5){
-  const bufferSize=2*audioCtx.sampleRate;
-  const buffer=audioCtx.createBuffer(1,bufferSize,audioCtx.sampleRate);
-  const data=buffer.getChannelData(0);
-  for(let i=0;i<bufferSize;i++){data[i]=Math.random()*2-1;}
-  const noise=audioCtx.createBufferSource();
-  noise.buffer=buffer;
-  const gain=audioCtx.createGain();
-  gain.gain.setValueAtTime(0.7,audioCtx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+duration);
-  noise.connect(gain); gain.connect(audioCtx.destination);
-  noise.start(); noise.stop(audioCtx.currentTime+duration);
-}
+function startAnimation() {
+  if (started) return;
+  started = true;
 
-let glitchActive=false;
-
-function startAnimation(){
-  if(started) return;
-  started=true;
   initAudio();
-  document.querySelector(".click-instruction").style.opacity="0";
+  document.querySelector(".click-instruction").style.opacity = "0";
 
-  let delay=0, offsetX=60, noteIndex=0;
-  let prevLetter=null;
+  let delay = 0;
+  let offsetX = 60;
+  let noteIndex = 0;
+  let previousLandedLetter = null;
 
-  words.forEach(word=>{
-    word.split("").forEach(char=>{
-      const span=document.createElement("span");
-      span.className="letter"; span.textContent=char;
-      span.style.left=offsetX+"px"; document.body.appendChild(span);
+  words.forEach(word => {
+    word.split("").forEach(char => {
+      const span = document.createElement("span");
+      span.className = "letter";
+      span.textContent = char;
+      span.style.left = offsetX + "px";
+      document.body.appendChild(span);
       allLetters.push(span);
-      const pan=getPan(offsetX);
 
-      span.addEventListener("mouseenter",()=>{
-        if(!span.classList.contains("gold")){
-          const rect=span.getBoundingClientRect();
-          const freq=getQuantizedNote(rect.top,getCurrentChord());
+      const pan = getPan(offsetX);
+
+      span.addEventListener("mouseenter", () => {
+        if (glitchActive) return;
+        if (!span.classList.contains("gold")) {
+          const rect = span.getBoundingClientRect();
+          const freq = getQuantizedNote(rect.top, getCurrentChord());
+
           span.classList.add("gold");
-          playChord(freq,pan);
-          spawnParticles(rect.left+rect.width/2,rect.top+rect.height/2);
-          setTimeout(()=>span.classList.remove("gold"),400);
+          playChord(freq, pan);
+          spawnParticles(
+            rect.left + rect.width / 2,
+            rect.top + rect.height / 2
+          );
+
+          setTimeout(() => {
+            if (!glitchActive) span.classList.remove("gold");
+          }, 400);
         }
       });
 
-      setTimeout(()=>{
-        span.style.opacity="1";
-        const finalY=200+Math.random()*40;
-        span.style.top=finalY+"px";
+      setTimeout(() => {
+        span.style.opacity = "1";
+        const finalY = 200 + Math.random() * 40;
+        span.style.top = finalY + "px";
 
-        setTimeout(()=>{
-          const rect=span.getBoundingClientRect();
-          const freq=getQuantizedNote(rect.top,getCurrentChord());
+        setTimeout(() => {
+          const rect = span.getBoundingClientRect();
+          const freq = getQuantizedNote(rect.top, getCurrentChord());
+
           span.classList.add("gold");
-          playChord(freq,pan);
-          spawnParticles(rect.left+rect.width/2,rect.top+rect.height/2);
+          playChord(freq, pan);
+          spawnParticles(
+            rect.left + rect.width / 2,
+            rect.top + rect.height / 2
+          );
+
           landedCount++;
+          landedLetters.push(span);
 
-          if(prevLetter){
-            constellationLines.push({x1:prevLetter.getBoundingClientRect().left+prevLetter.offsetWidth/2,
-                                     y1:prevLetter.getBoundingClientRect().top+prevLetter.offsetHeight/2,
-                                     x2:rect.left+rect.width/2,
-                                     y2:rect.top+rect.height/2,
-                                     progress:0,
-                                     life:1});
+          if (previousLandedLetter) {
+            createConstellationLine(previousLandedLetter, span);
           }
-          prevLetter=span;
+          previousLandedLetter = span;
 
-          // glitch final
-          if(landedCount===allLetters.length){
-            setTimeout(()=>{
-              glitchActive=true;
-              constellationLines.forEach(line=>line.glitch=true);
-              playWhiteNoise(1.2);
-              // arrête le glitch après 1.2s
-              setTimeout(()=>glitchActive=false,1200);
-            },1000);
+          if (landedCount === allLetters.length) {
+            setTimeout(() => {
+              startFinalGlitch();
+            }, 950);
           }
 
-        },1500);
+        }, 1500);
+      }, delay);
 
-      },delay);
-
-      delay+=rhythm[noteIndex%rhythm.length];
-      offsetX+=40;
+      delay += rhythm[noteIndex % rhythm.length];
+      offsetX += 40;
       noteIndex++;
-      if(noteIndex%4===0) chordStep++;
+
+      if (noteIndex % 4 === 0) {
+        chordStep++;
+      }
     });
-    offsetX+=60;
+
+    offsetX += 60;
   });
 }
 
-document.getElementById("wrapper").addEventListener("click",startAnimation);
-
+wrapper.addEventListener("click", startAnimation);
+wrapper.addEventListener("touchstart", startAnimation, { passive: true });
 </script>
 
 </body>
