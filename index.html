@@ -18,6 +18,7 @@ canvas {
   position: absolute;
   inset: 0;
   pointer-events: none;
+  z-index: 1;
 }
 
 #wrapper {
@@ -37,6 +38,15 @@ canvas {
   transition: opacity 0.5s ease;
 }
 
+#letters-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  transform-origin: center center;
+  will-change: transform, filter;
+}
+
 .letter {
   position: absolute;
   top: -100px;
@@ -45,13 +55,13 @@ canvas {
   font-size: 2.4rem;
   font-weight: bold;
   pointer-events: auto;
-  z-index: 3;
   transition:
     top 1.5s ease-out,
     opacity 1s ease-out,
     color 0.35s ease,
-    text-shadow 0.35s ease;
-  will-change: top, opacity, color, transform, text-shadow;
+    text-shadow 0.35s ease,
+    filter 0.15s ease;
+  will-change: top, opacity, color, text-shadow, filter;
 }
 
 .gold {
@@ -61,17 +71,20 @@ canvas {
     0 0 18px rgba(255, 215, 0, 0.45);
 }
 
-.glitching {
+.glitch-blue {
+  color: #72d9ff !important;
   text-shadow:
-    -2px 0 rgba(0, 180, 255, 0.9),
-    2px 0 rgba(100, 220, 255, 0.8),
-    0 0 14px rgba(0, 180, 255, 0.55);
+    -2px 0 rgba(0, 180, 255, 0.95),
+    2px 0 rgba(130, 230, 255, 0.9),
+    0 0 16px rgba(0, 190, 255, 0.7);
+  filter: saturate(1.4);
 }
 </style>
 </head>
 <body>
 
 <canvas id="canvas"></canvas>
+<div id="letters-layer"></div>
 
 <div id="wrapper">
   <div class="click-instruction">Clique pour éveiller Orpheus</div>
@@ -82,19 +95,88 @@ const words = ["Orpheus", "CARENTHIR"];
 
 /* =========================
    AUDIO
+   repris du fichier uploadé
 ========================= */
-let audioCtx = null;
+let actx = null;
+let bufs = [];
 
 function initAudio() {
-  if (!audioCtx) {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  }
-  if (audioCtx.state === "suspended") {
-    audioCtx.resume();
-  }
+  try {
+    if (!actx) {
+      actx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+
+    if (bufs.length) return;
+
+    for (let i = 0; i < 4; i++) {
+      const dur = 1.0 + Math.random() * 0.7;
+      const sr = 44100;
+      const buf = actx.createBuffer(1, sr * dur, sr);
+      const dd = buf.getChannelData(0);
+
+      for (let j = 0; j < buf.length; j++) {
+        const t = j / sr;
+        let s = (Math.random() * 2 - 1) * 0.18;
+
+        if (t < 0.3) {
+          s += Math.sin(220 * t * 2 * Math.PI) * 0.26;
+        } else if (t < 0.7) {
+          s += Math.sin(440 * t * 2 * Math.PI) * 0.2;
+          s += Math.sin(880 * t * 2 * Math.PI) * 0.1;
+        } else {
+          s += Math.sin(330 * t * 2 * Math.PI) * 0.16;
+          s += (Math.random() * 2 - 1) * 0.07;
+        }
+
+        const fs = dur * 0.6;
+        if (t > fs) s *= Math.max(0, 1 - (t - fs) / (dur - fs));
+        if (t < 0.05) s *= t / 0.05;
+
+        dd[j] = s;
+      }
+
+      bufs.push(buf);
+    }
+  } catch (e) {}
 }
 
-const scale = [0, 2, 3, 5, 7, 8, 10]; // la mineur naturel
+function playGlitchSound() {
+  if (!actx) initAudio();
+  if (!actx || !bufs.length) return;
+
+  const go = () => {
+    const src = actx.createBufferSource();
+    src.buffer = bufs[Math.floor(Math.random() * bufs.length)];
+
+    const g = actx.createGain();
+    const hp = actx.createBiquadFilter();
+    const bp = actx.createBiquadFilter();
+
+    hp.type = "highpass";
+    hp.frequency.value = 700;
+
+    bp.type = "bandpass";
+    bp.frequency.value = 1900 + Math.random() * 1000;
+    bp.Q.value = 0.9;
+
+    g.gain.value = 0.95;
+    src.playbackRate.value = 0.72 + Math.random() * 0.22;
+
+    src.connect(hp);
+    hp.connect(bp);
+    bp.connect(g);
+    g.connect(actx.destination);
+
+    src.start();
+  };
+
+  actx.state === "suspended" ? actx.resume().then(go) : go();
+}
+
+/* =========================
+   MUSIQUE DES LETTRES
+========================= */
+const scale = [0, 2, 3, 5, 7, 8, 10];
 const progression = [
   [0, 2, 4], // Am
   [5, 0, 2], // F
@@ -118,9 +200,10 @@ function getQuantizedNote(y, chord) {
   let t = (y - minY) / (maxY - minY);
   t = Math.max(0, Math.min(1, t));
 
-  const octave = Math.floor(3 + (1 - t) * 2); // 3 à 5
+  const octave = Math.floor(3 + (1 - t) * 2);
   const degree = chord[Math.floor(Math.random() * chord.length)];
-  const midi = 57 + scale[degree] + (octave - 4) * 12; // base A3/A4-ish
+  const midi = 57 + scale[degree] + (octave - 4) * 12;
+
   return midiToFreq(midi);
 }
 
@@ -129,13 +212,16 @@ function getPan(x) {
 }
 
 function playChord(freq, pan) {
+  if (!actx) initAudio();
+  if (!actx) return;
+
   const ratios = [1, 1.2, 1.5];
 
   ratios.forEach((r, i) => {
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    const panner = audioCtx.createStereoPanner();
-    const filter = audioCtx.createBiquadFilter();
+    const osc = actx.createOscillator();
+    const gain = actx.createGain();
+    const panner = actx.createStereoPanner();
+    const filter = actx.createBiquadFilter();
 
     osc.type = "triangle";
     osc.frequency.value = freq * r;
@@ -143,66 +229,28 @@ function playChord(freq, pan) {
     filter.type = "lowpass";
     filter.frequency.value = 1800;
 
-    gain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
-    gain.gain.linearRampToValueAtTime(0.16, audioCtx.currentTime + 0.045);
-    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.9);
+    gain.gain.setValueAtTime(0.0001, actx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.16, actx.currentTime + 0.045);
+    gain.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 1.9);
 
     panner.pan.value = pan;
 
     osc.connect(filter);
     filter.connect(gain);
     gain.connect(panner);
-    panner.connect(audioCtx.destination);
+    panner.connect(actx.destination);
 
-    osc.start(audioCtx.currentTime + i * 0.035);
-    osc.stop(audioCtx.currentTime + 2);
+    osc.start(actx.currentTime + i * 0.035);
+    osc.stop(actx.currentTime + 2);
   });
 }
 
-function playStaticNoise(duration = 1.2) {
-  const sampleRate = audioCtx.sampleRate;
-  const bufferSize = Math.ceil(sampleRate * duration);
-  const buffer = audioCtx.createBuffer(1, bufferSize, sampleRate);
-  const data = buffer.getChannelData(0);
-
-  // Bruit blanc avec un léger "grain" plus agressif
-  for (let i = 0; i < bufferSize; i++) {
-    const white = Math.random() * 2 - 1;
-    const crackle = Math.random() > 0.985 ? (Math.random() * 2 - 1) * 2.4 : 0;
-    data[i] = white * 0.75 + crackle * 0.25;
-  }
-
-  const source = audioCtx.createBufferSource();
-  const highpass = audioCtx.createBiquadFilter();
-  const bandpass = audioCtx.createBiquadFilter();
-  const gain = audioCtx.createGain();
-
-  highpass.type = "highpass";
-  highpass.frequency.value = 900;
-
-  bandpass.type = "bandpass";
-  bandpass.frequency.value = 2800;
-  bandpass.Q.value = 0.8;
-
-  gain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
-  gain.gain.linearRampToValueAtTime(0.95, audioCtx.currentTime + 0.03);
-  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
-
-  source.buffer = buffer;
-  source.connect(highpass);
-  highpass.connect(bandpass);
-  bandpass.connect(gain);
-  gain.connect(audioCtx.destination);
-
-  source.start();
-  source.stop(audioCtx.currentTime + duration);
-}
-
 /* =========================
-   CANVAS
+   CANVAS / PARTICULES / CONSTELLATION
 ========================= */
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
+const lettersLayer = document.getElementById("letters-layer");
 
 function resizeCanvas() {
   canvas.width = window.innerWidth;
@@ -213,24 +261,6 @@ window.addEventListener("resize", resizeCanvas);
 
 let particles = [];
 let constellationLines = [];
-
-/* Line states:
-   drawing -> visible -> glitch -> dead
-*/
-function createConstellationLine(fromEl, toEl) {
-  const a = fromEl.getBoundingClientRect();
-  const b = toEl.getBoundingClientRect();
-
-  constellationLines.push({
-    x1: a.left + a.width / 2,
-    y1: a.top + a.height / 2,
-    x2: b.left + b.width / 2,
-    y2: b.top + b.height / 2,
-    progress: 0,
-    state: "drawing",
-    alpha: 0.55
-  });
-}
 
 function spawnParticles(x, y) {
   for (let i = 0; i < 18; i++) {
@@ -246,33 +276,88 @@ function spawnParticles(x, y) {
 }
 
 function spawnBlueGlitchParticles(x, y) {
-  for (let i = 0; i < 22; i++) {
+  for (let i = 0; i < 26; i++) {
     particles.push({
       x,
       y,
-      vx: (Math.random() - 0.5) * 4.8,
-      vy: (Math.random() - 0.5) * 4.8,
+      vx: (Math.random() - 0.5) * 5.2,
+      vy: (Math.random() - 0.5) * 5.2,
       life: 1,
       color: "blue"
     });
   }
 }
 
+function createConstellationLine(fromEl, toEl) {
+  const a = fromEl.getBoundingClientRect();
+  const b = toEl.getBoundingClientRect();
+
+  constellationLines.push({
+    x1: a.left + a.width / 2,
+    y1: a.top + a.height / 2,
+    x2: b.left + b.width / 2,
+    y2: b.top + b.height / 2,
+    progress: 0,
+    state: "drawing",
+    alpha: 0.55
+  });
+}
+
 /* =========================
-   GLITCH STATE
+   ETAT GLOBAL
 ========================= */
 let started = false;
 let landedCount = 0;
 let allLetters = [];
-let landedLetters = [];
 let glitchActive = false;
+let globalJitterRAF = null;
+
+function applyGlobalJitter() {
+  if (!glitchActive) {
+    lettersLayer.style.transform = "translate(0px, 0px)";
+    lettersLayer.style.filter = "none";
+    globalJitterRAF = null;
+    return;
+  }
+
+  const x = (Math.random() - 0.5) * 14;
+  const y = (Math.random() - 0.5) * 10;
+  const skew = (Math.random() - 0.5) * 2.5;
+  lettersLayer.style.transform = `translate(${x}px, ${y}px) skewX(${skew}deg)`;
+  lettersLayer.style.filter = `drop-shadow(0 0 ${6 + Math.random() * 6}px rgba(70, 200, 255, 0.55))`;
+
+  allLetters.forEach((letter, i) => {
+    const bluePalette = ["#57d8ff", "#82e5ff", "#2bbcff", "#a8efff", "#7fdfff"];
+    letter.classList.add("glitch-blue");
+    letter.style.color = bluePalette[(i + Math.floor(Math.random() * bluePalette.length)) % bluePalette.length];
+  });
+
+  globalJitterRAF = requestAnimationFrame(applyGlobalJitter);
+}
+
+function stopGlobalJitter() {
+  glitchActive = false;
+
+  if (globalJitterRAF) {
+    cancelAnimationFrame(globalJitterRAF);
+    globalJitterRAF = null;
+  }
+
+  lettersLayer.style.transform = "translate(0px, 0px)";
+  lettersLayer.style.filter = "none";
+
+  allLetters.forEach(letter => {
+    letter.classList.remove("gold");
+    letter.classList.remove("glitch-blue");
+    letter.style.color = "#808080";
+    letter.style.filter = "none";
+  });
+}
 
 function startFinalGlitch() {
   glitchActive = true;
 
-  allLetters.forEach((letter) => {
-    letter.classList.add("glitching");
-
+  allLetters.forEach(letter => {
     const rect = letter.getBoundingClientRect();
     spawnBlueGlitchParticles(
       rect.left + rect.width / 2,
@@ -287,27 +372,20 @@ function startFinalGlitch() {
     }
   });
 
-  playStaticNoise(1.35);
+  playGlitchSound();
+  applyGlobalJitter();
 
   setTimeout(() => {
-    allLetters.forEach((letter) => {
-      letter.classList.remove("gold");
-      letter.classList.remove("glitching");
-      letter.style.color = "#808080";
-      letter.style.transform = "translate(0px, 0px)";
-    });
-
-    glitchActive = false;
+    stopGlobalJitter();
   }, 1350);
 }
 
 /* =========================
-   ANIMATION LOOP
+   BOUCLE D’ANIMATION
 ========================= */
 function animate() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Particules
   particles.forEach(p => {
     p.x += p.vx;
     p.y += p.vy;
@@ -326,7 +404,6 @@ function animate() {
 
   particles = particles.filter(p => p.life > 0);
 
-  // Constellation
   constellationLines.forEach(line => {
     if (line.state === "drawing") {
       line.progress += 0.04;
@@ -360,16 +437,16 @@ function animate() {
     else if (line.state === "glitch") {
       line.alpha -= 0.045;
 
-      const dx1 = (Math.random() - 0.5) * 5;
-      const dy1 = (Math.random() - 0.5) * 5;
-      const dx2 = (Math.random() - 0.5) * 5;
-      const dy2 = (Math.random() - 0.5) * 5;
+      const dx1 = (Math.random() - 0.5) * 6;
+      const dy1 = (Math.random() - 0.5) * 6;
+      const dx2 = (Math.random() - 0.5) * 6;
+      const dy2 = (Math.random() - 0.5) * 6;
 
       const alpha = Math.max(0, line.alpha);
-      const blue = 180 + Math.floor(Math.random() * 60);
+      const blue = 180 + Math.floor(Math.random() * 70);
 
       ctx.strokeStyle = `rgba(40, ${blue}, 255, ${alpha})`;
-      ctx.lineWidth = 1.8;
+      ctx.lineWidth = 1.9;
       ctx.beginPath();
       ctx.moveTo(line.x1 + dx1, line.y1 + dy1);
       ctx.lineTo(line.x2 + dx2, line.y2 + dy2);
@@ -383,25 +460,12 @@ function animate() {
 
   constellationLines = constellationLines.filter(line => line.state !== "dead");
 
-  // Jitter lettres
-  if (glitchActive) {
-    allLetters.forEach((letter, i) => {
-      const x = (Math.random() - 0.5) * 8;
-      const y = (Math.random() - 0.5) * 8;
-      letter.style.transform = `translate(${x}px, ${y}px)`;
-
-      const palette = ["#58d7ff", "#9be7ff", "#1db8ff", "#7fe0ff", "#b7efff"];
-      const c = palette[(Math.floor(Math.random() * palette.length) + i) % palette.length];
-      letter.style.color = c;
-    });
-  }
-
   requestAnimationFrame(animate);
 }
 animate();
 
 /* =========================
-   MAIN
+   LOGIQUE PRINCIPALE
 ========================= */
 const rhythm = [180, 120, 260, 140, 320, 200];
 const wrapper = document.getElementById("wrapper");
@@ -424,7 +488,7 @@ function startAnimation() {
       span.className = "letter";
       span.textContent = char;
       span.style.left = offsetX + "px";
-      document.body.appendChild(span);
+      lettersLayer.appendChild(span);
       allLetters.push(span);
 
       const pan = getPan(offsetX);
@@ -437,10 +501,7 @@ function startAnimation() {
 
           span.classList.add("gold");
           playChord(freq, pan);
-          spawnParticles(
-            rect.left + rect.width / 2,
-            rect.top + rect.height / 2
-          );
+          spawnParticles(rect.left + rect.width / 2, rect.top + rect.height / 2);
 
           setTimeout(() => {
             if (!glitchActive) span.classList.remove("gold");
@@ -459,13 +520,9 @@ function startAnimation() {
 
           span.classList.add("gold");
           playChord(freq, pan);
-          spawnParticles(
-            rect.left + rect.width / 2,
-            rect.top + rect.height / 2
-          );
+          spawnParticles(rect.left + rect.width / 2, rect.top + rect.height / 2);
 
           landedCount++;
-          landedLetters.push(span);
 
           if (previousLandedLetter) {
             createConstellationLine(previousLandedLetter, span);
