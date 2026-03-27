@@ -2,6 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
 <link href="https://fonts.googleapis.com/css?family=Amethysta" rel="stylesheet">
 <style>
 html, body {
@@ -9,7 +10,7 @@ html, body {
   padding: 0;
   width: 100%;
   height: 100%;
-  background: transparent;
+  background: #f2f2f2;
   overflow: hidden;
   font-family: "Amethysta", serif;
 }
@@ -18,15 +19,7 @@ canvas {
   position: absolute;
   inset: 0;
   pointer-events: none;
-}
-
-#main-canvas {
   z-index: 1;
-}
-
-#glitch-canvas {
-  z-index: 4;
-  mix-blend-mode: screen;
 }
 
 #wrapper {
@@ -36,53 +29,96 @@ canvas {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  z-index: 2;
+  z-index: 10;
 }
 
 .click-instruction {
-  color: #888;
+  color: #777;
   font-size: 1.4rem;
   text-align: center;
   transition: opacity 0.5s ease;
 }
 
-#letters-layer {
+#scene {
   position: absolute;
   inset: 0;
-  z-index: 3;
-  pointer-events: none;
+  z-index: 5;
 }
+
+.letters-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  transform-origin: center center;
+  will-change: transform, opacity, filter;
+}
+
+#letters-main { z-index: 6; }
+#letters-blue { z-index: 5; opacity: 0; mix-blend-mode: multiply; }
+#letters-yellow { z-index: 4; opacity: 0; mix-blend-mode: multiply; }
 
 .letter {
   position: absolute;
   top: -100px;
   opacity: 0;
-  color: #808080;
+  color: #6f6f6f;
   font-size: 2.4rem;
   font-weight: bold;
   pointer-events: auto;
+  white-space: pre;
   transition:
     top 1.5s ease-out,
     opacity 1s ease-out,
-    color 0.35s ease,
-    text-shadow 0.35s ease,
-    filter 0.2s ease;
-  will-change: top, opacity, color, text-shadow, filter;
+    color 0.28s ease,
+    text-shadow 0.28s ease,
+    filter 0.18s ease;
+  will-change: top, opacity, transform, color, filter, text-shadow;
 }
 
-.gold {
+#letters-main .gold {
   color: #FFD700;
   text-shadow:
-    0 0 10px rgba(255, 215, 0, 0.9),
-    0 0 20px rgba(255, 215, 0, 0.5);
+    0 0 8px rgba(255, 215, 0, 0.9),
+    0 0 18px rgba(255, 215, 0, 0.5);
+}
+
+#letters-blue .letter {
+  color: rgba(45, 65, 255, 0.85);
+  text-shadow: 0 0 4px rgba(45, 65, 255, 0.45);
+}
+
+#letters-yellow .letter {
+  color: rgba(255, 232, 0, 0.85);
+  text-shadow: 0 0 4px rgba(255, 232, 0, 0.4);
+}
+
+.glitch-strip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 24px;
+  opacity: 0;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+  z-index: 9;
+  background: rgba(255,255,255,0.08);
 }
 </style>
 </head>
 <body>
 
-<canvas id="main-canvas"></canvas>
-<canvas id="glitch-canvas"></canvas>
-<div id="letters-layer"></div>
+<canvas id="canvas"></canvas>
+
+<div id="scene">
+  <div id="letters-yellow" class="letters-layer"></div>
+  <div id="letters-blue" class="letters-layer"></div>
+  <div id="letters-main" class="letters-layer"></div>
+
+  <div class="glitch-strip" id="gs1"></div>
+  <div class="glitch-strip" id="gs2"></div>
+  <div class="glitch-strip" id="gs3"></div>
+  <div class="glitch-strip" id="gs4"></div>
+</div>
 
 <div id="wrapper">
   <div class="click-instruction">Clique pour éveiller Orpheus</div>
@@ -91,71 +127,91 @@ canvas {
 <script>
 const words = ["Orpheus", "CARENTHIR"];
 
-/* ================= AUDIO ================= */
+/* =========================
+   AUDIO — repris du fichier uploadé
+========================= */
 let actx = null;
 let bufs = [];
 
 function initAudio() {
-  if (!actx) {
-    actx = new (window.AudioContext || window.webkitAudioContext)();
-  }
-  if (bufs.length) return;
-
-  for (let i = 0; i < 4; i++) {
-    const sr = 44100;
-    const dur = 1.15 + Math.random() * 0.2;
-    const buf = actx.createBuffer(1, sr * dur, sr);
-    const data = buf.getChannelData(0);
-
-    for (let j = 0; j < buf.length; j++) {
-      const t = j / sr;
-      let s = (Math.random() * 2 - 1) * 0.55;
-      s += Math.sin(2 * Math.PI * (900 + Math.random() * 500) * t) * 0.03;
-      data[j] = s;
+  try {
+    if (!actx) {
+      actx = new (window.AudioContext || window.webkitAudioContext)();
     }
+    if (bufs.length) return;
 
-    bufs.push(buf);
-  }
+    for (let i = 0; i < 4; i++) {
+      const dur = 1.0 + Math.random() * 0.7;
+      const sr = 44100;
+      const buf = actx.createBuffer(1, sr * dur, sr);
+      const dd = buf.getChannelData(0);
+
+      for (let j = 0; j < buf.length; j++) {
+        const t = j / sr;
+        let s = (Math.random() * 2 - 1) * 0.18;
+
+        if (t < 0.3) {
+          s += Math.sin(220 * t * 2 * Math.PI) * 0.26;
+        } else if (t < 0.7) {
+          s += Math.sin(440 * t * 2 * Math.PI) * 0.2;
+          s += Math.sin(880 * t * 2 * Math.PI) * 0.1;
+        } else {
+          s += Math.sin(330 * t * 2 * Math.PI) * 0.16;
+          s += (Math.random() * 2 - 1) * 0.07;
+        }
+
+        const fs = dur * 0.6;
+        if (t > fs) s *= Math.max(0, 1 - (t - fs) / (dur - fs));
+        if (t < 0.05) s *= t / 0.05;
+        dd[j] = s;
+      }
+
+      bufs.push(buf);
+    }
+  } catch (e) {}
 }
 
-function playGlitchSound() {
+function playUploadedGlitchSound() {
   if (!actx) initAudio();
   if (!actx || !bufs.length) return;
 
-  const src = actx.createBufferSource();
-  const hp = actx.createBiquadFilter();
-  const bp = actx.createBiquadFilter();
-  const gain = actx.createGain();
+  const go = () => {
+    const src = actx.createBufferSource();
+    src.buffer = bufs[Math.floor(Math.random() * bufs.length)];
 
-  src.buffer = bufs[Math.floor(Math.random() * bufs.length)];
-  src.playbackRate.value = 0.82 + Math.random() * 0.12;
+    const g = actx.createGain();
+    const hp = actx.createBiquadFilter();
+    const bp = actx.createBiquadFilter();
 
-  hp.type = "highpass";
-  hp.frequency.value = 700;
+    hp.type = "highpass";
+    hp.frequency.value = 650;
 
-  bp.type = "bandpass";
-  bp.frequency.value = 1800 + Math.random() * 900;
-  bp.Q.value = 0.7;
+    bp.type = "bandpass";
+    bp.frequency.value = 1700 + Math.random() * 1200;
+    bp.Q.value = 0.9;
 
-  gain.gain.setValueAtTime(0.0001, actx.currentTime);
-  gain.gain.linearRampToValueAtTime(1.0, actx.currentTime + 0.03);
-  gain.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 1.15);
+    g.gain.value = 0.55;
+    src.playbackRate.value = 0.82 + Math.random() * 0.35;
 
-  src.connect(hp);
-  hp.connect(bp);
-  bp.connect(gain);
-  gain.connect(actx.destination);
+    src.connect(hp);
+    hp.connect(bp);
+    bp.connect(g);
+    g.connect(actx.destination);
+    src.start();
+  };
 
-  src.start();
+  actx.state === "suspended" ? actx.resume().then(go) : go();
 }
 
-/* ================= MUSIQUE ================= */
+/* =========================
+   MUSIQUE DES LETTRES
+========================= */
 const scale = [0, 2, 3, 5, 7, 8, 10];
 const progression = [
-  [0, 2, 4],
-  [5, 0, 2],
-  [3, 5, 0],
-  [4, 6, 1]
+  [0,2,4], // Am
+  [5,0,2], // F
+  [3,5,0], // C
+  [4,6,1]  // G
 ];
 let chordStep = 0;
 
@@ -172,18 +228,23 @@ function getQuantizedNote(y, chord) {
   const maxY = 260;
   let t = (y - minY) / (maxY - minY);
   t = Math.max(0, Math.min(1, t));
-
   const octave = Math.floor(3 + (1 - t) * 2);
   const degree = chord[Math.floor(Math.random() * chord.length)];
   const midi = 57 + scale[degree] + (octave - 4) * 12;
   return midiToFreq(midi);
 }
 
+function getPan(x) {
+  return (x / window.innerWidth) * 2 - 1;
+}
+
 function playChord(freq, pan) {
   if (!actx) initAudio();
   if (!actx) return;
 
-  [1, 1.2, 1.5].forEach((r, i) => {
+  const ratios = [1, 1.2, 1.5];
+
+  ratios.forEach((r, i) => {
     const osc = actx.createOscillator();
     const gain = actx.createGain();
     const panner = actx.createStereoPanner();
@@ -196,8 +257,8 @@ function playChord(freq, pan) {
     filter.frequency.value = 1800;
 
     gain.gain.setValueAtTime(0.0001, actx.currentTime);
-    gain.gain.linearRampToValueAtTime(0.18, actx.currentTime + 0.05);
-    gain.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 1.8);
+    gain.gain.linearRampToValueAtTime(0.16, actx.currentTime + 0.045);
+    gain.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 1.9);
 
     panner.pan.value = pan;
 
@@ -206,373 +267,412 @@ function playChord(freq, pan) {
     gain.connect(panner);
     panner.connect(actx.destination);
 
-    osc.start(actx.currentTime + i * 0.04);
+    osc.start(actx.currentTime + i * 0.035);
     osc.stop(actx.currentTime + 2);
   });
 }
 
-/* ================= CANVAS ================= */
-const mainCanvas = document.getElementById("main-canvas");
-const mainCtx = mainCanvas.getContext("2d");
-const glitchCanvas = document.getElementById("glitch-canvas");
-const glitchCtx = glitchCanvas.getContext("2d");
-const lettersLayer = document.getElementById("letters-layer");
+/* =========================
+   DOM / LETTRES
+========================= */
+const mainLayer = document.getElementById("letters-main");
+const blueLayer = document.getElementById("letters-blue");
+const yellowLayer = document.getElementById("letters-yellow");
+
+const scene = document.getElementById("scene");
+const strips = [
+  document.getElementById("gs1"),
+  document.getElementById("gs2"),
+  document.getElementById("gs3"),
+  document.getElementById("gs4")
+];
+
+let letters = [];
+let started = false;
+let landedCount = 0;
+let glitchActive = false;
+
+function createTriplet(char, leftPx) {
+  const main = document.createElement("span");
+  const blue = document.createElement("span");
+  const yellow = document.createElement("span");
+
+  [main, blue, yellow].forEach(el => {
+    el.className = "letter";
+    el.textContent = char;
+    el.style.left = leftPx + "px";
+  });
+
+  mainLayer.appendChild(main);
+  blueLayer.appendChild(blue);
+  yellowLayer.appendChild(yellow);
+
+  return { main, blue, yellow };
+}
+
+function setTripletTop(triplet, topPx) {
+  triplet.main.style.top = topPx + "px";
+  triplet.blue.style.top = topPx + "px";
+  triplet.yellow.style.top = topPx + "px";
+}
+
+function setTripletOpacity(triplet, value) {
+  triplet.main.style.opacity = value;
+  triplet.blue.style.opacity = value;
+  triplet.yellow.style.opacity = value;
+}
+
+/* =========================
+   CANVAS / CONSTELLATION / PARTICULES
+========================= */
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
 
 function resizeCanvas() {
-  mainCanvas.width = window.innerWidth;
-  mainCanvas.height = window.innerHeight;
-  glitchCanvas.width = window.innerWidth;
-  glitchCanvas.height = window.innerHeight;
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
 }
 resizeCanvas();
 window.addEventListener("resize", resizeCanvas);
 
 let particles = [];
 let lines = [];
-let letterModels = [];
 
-/* ================= PARTICULES ================= */
-function spawnParticles(x, y, color = "gold") {
-  const count = color === "glitch" ? 30 : 18;
+function spawnParticles(x, y, mode = "gold") {
+  const count = mode === "mosh" ? 26 : 16;
   for (let i = 0; i < count; i++) {
     particles.push({
       x,
       y,
-      vx: (Math.random() - 0.5) * (color === "glitch" ? 5.2 : 2.5),
-      vy: (Math.random() - 0.5) * (color === "glitch" ? 5.2 : 2.5),
+      vx: (Math.random() - 0.5) * (mode === "mosh" ? 5.4 : 2.5),
+      vy: (Math.random() - 0.5) * (mode === "mosh" ? 5.4 : 2.5),
       life: 1,
-      color
+      mode
     });
   }
 }
 
-/* ================= CONSTELLATION ================= */
-function createLine(fromRect, toRect) {
+function createLine(fromEl, toEl) {
+  const a = fromEl.getBoundingClientRect();
+  const b = toEl.getBoundingClientRect();
   lines.push({
-    x1: fromRect.left + fromRect.width / 2,
-    y1: fromRect.top + fromRect.height / 2,
-    x2: toRect.left + toRect.width / 2,
-    y2: toRect.top + toRect.height / 2,
+    x1: a.left + a.width / 2,
+    y1: a.top + a.height / 2,
+    x2: b.left + b.width / 2,
+    y2: b.top + b.height / 2,
     p: 0,
-    alpha: 1,
-    state: "draw"
+    state: "draw",
+    alpha: 1
   });
 }
 
-/* ================= GLITCH STYLE ================= */
-let started = false;
-let landed = 0;
-let letters = [];
-let glitchActive = false;
-
-function updateLetterModels() {
-  letterModels = letters.map(letter => {
-    const rect = letter.getBoundingClientRect();
-    return {
-      char: letter.textContent,
-      x: rect.left + rect.width / 2,
-      y: rect.top + rect.height * 0.78,
-      gold: letter.classList.contains("gold"),
-      size: parseFloat(getComputedStyle(letter).fontSize)
-    };
-  });
-}
-
-function drawGlitchGhostText(ctx, models, dx, dy, color, alpha) {
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.fillStyle = color;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "alphabetic";
-
-  for (const m of models) {
-    ctx.font = `bold ${m.size}px Amethysta`;
-    ctx.fillText(m.char, m.x + dx, m.y + dy);
-  }
-  ctx.restore();
-}
-
-function drawGlitchGhostLines(ctx, dx, dy, color, alpha, lineWidth = 1.5) {
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.strokeStyle = color;
-  ctx.lineWidth = lineWidth;
-
-  for (const l of lines) {
-    if (l.state === "dead") continue;
-
-    let x2 = l.x2;
-    let y2 = l.y2;
-
-    if (l.state === "draw") {
-      x2 = l.x1 + (l.x2 - l.x1) * l.p;
-      y2 = l.y1 + (l.y2 - l.y1) * l.p;
+function drawNormalLine(line) {
+  if (line.state === "draw") {
+    line.p += 0.05;
+    if (line.p >= 1) {
+      line.p = 1;
+      line.state = "full";
     }
+    const x = line.x1 + (line.x2 - line.x1) * line.p;
+    const y = line.y1 + (line.y2 - line.y1) * line.p;
 
+    ctx.strokeStyle = "rgba(255,215,150,0.58)";
+    ctx.lineWidth = 1.2;
     ctx.beginPath();
-    ctx.moveTo(l.x1 + dx, l.y1 + dy);
-    ctx.lineTo(x2 + dx, y2 + dy);
+    ctx.moveTo(line.x1, line.y1);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    return;
+  }
+
+  ctx.strokeStyle = "rgba(255,215,150,0.38)";
+  ctx.lineWidth = 1.1;
+  ctx.beginPath();
+  ctx.moveTo(line.x1, line.y1);
+  ctx.lineTo(line.x2, line.y2);
+  ctx.stroke();
+}
+
+function drawMoshLine(line) {
+  line.alpha -= 0.038;
+  const a = Math.max(0, line.alpha);
+
+  const segments = 7;
+  for (let i = 0; i < segments; i++) {
+    const t1 = i / segments;
+    const t2 = (i + 1) / segments;
+
+    const ax = line.x1 + (line.x2 - line.x1) * t1;
+    const ay = line.y1 + (line.y2 - line.y1) * t1;
+    const bx = line.x1 + (line.x2 - line.x1) * t2;
+    const by = line.y1 + (line.y2 - line.y1) * t2;
+
+    const dx = (Math.random() - 0.5) * 28;
+    const dy = (Math.random() - 0.5) * 5;
+
+    ctx.strokeStyle = `rgba(20, 50, 255, ${a * 0.55})`;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(ax - 8 + dx, ay + dy);
+    ctx.lineTo(bx - 8 + dx, by + dy);
+    ctx.stroke();
+
+    ctx.strokeStyle = `rgba(255, 230, 0, ${a * 0.55})`;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(ax + 8 + dx, ay + dy);
+    ctx.lineTo(bx + 8 + dx, by + dy);
+    ctx.stroke();
+
+    ctx.strokeStyle = `rgba(20,20,20,${a * 0.5})`;
+    ctx.lineWidth = 1.9;
+    ctx.beginPath();
+    ctx.moveTo(ax + dx, ay + dy);
+    ctx.lineTo(bx + dx, by + dy);
     ctx.stroke();
   }
-
-  ctx.restore();
 }
 
-function drawBandSlicedPass(ctx, models) {
-  const bandCount = 7 + Math.floor(Math.random() * 6);
-
-  for (let i = 0; i < bandCount; i++) {
-    const y = Math.random() * ctx.canvas.height;
-    const h = 18 + Math.random() * 75;
-    const shift = (Math.random() - 0.5) * 90;
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, y, ctx.canvas.width, h);
-    ctx.clip();
-
-    drawGlitchGhostText(ctx, models, shift, 0, "rgba(255,255,255,0.55)", 0.7);
-    drawGlitchGhostLines(ctx, shift, 0, "rgba(255,255,255,0.45)", 0.8, 1.4);
-    ctx.restore();
-  }
-}
-
-function renderGlitchOverlay() {
-  glitchCtx.clearRect(0, 0, glitchCanvas.width, glitchCanvas.height);
-  if (!glitchActive) return;
-
-  updateLetterModels();
-
-  const cx = (Math.random() - 0.5) * 12;
-  const cy = (Math.random() - 0.5) * 4;
-
-  const blueDx = -18 - Math.random() * 16;
-  const yellowDx = 18 + Math.random() * 16;
-  const blueDy = (Math.random() - 0.5) * 6;
-  const yellowDy = (Math.random() - 0.5) * 6;
-
-  const midDx = (Math.random() - 0.5) * 8;
-  const midDy = (Math.random() - 0.5) * 3;
-
-  drawGlitchGhostText(glitchCtx, letterModels, cx + blueDx, cy + blueDy, "#2948ff", 0.72);
-  drawGlitchGhostText(glitchCtx, letterModels, cx + yellowDx, cy + yellowDy, "#fff200", 0.68);
-  drawGlitchGhostText(glitchCtx, letterModels, cx + midDx, cy + midDy, "rgba(0,0,0,0.82)", 0.55);
-
-  drawGlitchGhostLines(glitchCtx, blueDx, blueDy, "#2948ff", 0.55, 2);
-  drawGlitchGhostLines(glitchCtx, yellowDx, yellowDy, "#fff200", 0.52, 2);
-  drawGlitchGhostLines(glitchCtx, midDx, midDy, "rgba(0,0,0,0.55)", 0.5, 1.7);
-
-  drawBandSlicedPass(glitchCtx, letterModels);
-
-  if (Math.random() > 0.55) {
-    const bandY = Math.random() * glitchCanvas.height;
-    const bandH = 8 + Math.random() * 24;
-    glitchCtx.fillStyle = `rgba(255,255,255,${0.05 + Math.random() * 0.08})`;
-    glitchCtx.fillRect(0, bandY, glitchCanvas.width, bandH);
-  }
-}
-
-function startFinalGlitch() {
-  glitchActive = true;
-
-  letters.forEach(letter => {
-    const rect = letter.getBoundingClientRect();
-    spawnParticles(
-      rect.left + rect.width / 2,
-      rect.top + rect.height / 2,
-      "glitch"
-    );
-  });
-
-  lines.forEach(l => {
-    l.state = "glitch";
-    l.alpha = 1;
-  });
-
-  playGlitchSound();
-
-  setTimeout(() => {
-    glitchActive = false;
-    glitchCtx.clearRect(0, 0, glitchCanvas.width, glitchCanvas.height);
-    letters.forEach(l => l.classList.remove("gold"));
-  }, 1200);
-}
-
-/* ================= MAIN LOOP ================= */
-function animate() {
-  mainCtx.clearRect(0, 0, mainCanvas.width, mainCanvas.height);
+function animateCanvas() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   particles.forEach(p => {
     p.x += p.vx;
     p.y += p.vy;
-    p.life -= (p.color === "glitch" ? 0.035 : 0.02);
+    p.life -= p.mode === "mosh" ? 0.032 : 0.02;
 
-    if (p.color === "glitch") {
-      const palette = [
-        "rgba(41,72,255,ALPHA)",
-        "rgba(255,242,0,ALPHA)",
-        "rgba(255,255,255,ALPHA)"
-      ];
-      const color = palette[Math.floor(Math.random() * palette.length)]
-        .replace("ALPHA", Math.max(0, p.life).toFixed(3));
-      mainCtx.fillStyle = color;
+    if (p.mode === "mosh") {
+      const col = Math.random() > 0.5
+        ? `rgba(20,50,255,${Math.max(0,p.life)})`
+        : `rgba(255,230,0,${Math.max(0,p.life)})`;
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 2.6, 0, Math.PI * 2);
+      ctx.fill();
     } else {
-      mainCtx.fillStyle = `rgba(255,215,0,${Math.max(0, p.life)})`;
+      ctx.fillStyle = `rgba(255,215,0,${Math.max(0,p.life)})`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+      ctx.fill();
     }
-
-    mainCtx.beginPath();
-    mainCtx.arc(p.x, p.y, p.color === "glitch" ? 2.6 : 2, 0, Math.PI * 2);
-    mainCtx.fill();
   });
-
   particles = particles.filter(p => p.life > 0);
 
-  lines.forEach(l => {
-    if (l.state === "draw") {
-      l.p += 0.05;
-      if (l.p >= 1) {
-        l.p = 1;
-        l.state = "full";
-      }
-
-      const x = l.x1 + (l.x2 - l.x1) * l.p;
-      const y = l.y1 + (l.y2 - l.y1) * l.p;
-
-      mainCtx.strokeStyle = "rgba(255,215,150,0.62)";
-      mainCtx.lineWidth = 1.2;
-      mainCtx.beginPath();
-      mainCtx.moveTo(l.x1, l.y1);
-      mainCtx.lineTo(x, y);
-      mainCtx.stroke();
+  lines.forEach(line => {
+    if (line.state === "draw" || line.state === "full") {
+      drawNormalLine(line);
+    } else if (line.state === "glitch") {
+      drawMoshLine(line);
     }
+  });
+  lines = lines.filter(line => !(line.state === "glitch" && line.alpha <= 0));
 
-    else if (l.state === "full") {
-      mainCtx.strokeStyle = "rgba(255,215,150,0.38)";
-      mainCtx.lineWidth = 1.1;
-      mainCtx.beginPath();
-      mainCtx.moveTo(l.x1, l.y1);
-      mainCtx.lineTo(l.x2, l.y2);
-      mainCtx.stroke();
-    }
+  requestAnimationFrame(animateCanvas);
+}
+animateCanvas();
 
-    else if (l.state === "glitch") {
-      l.alpha -= 0.04;
-      if (l.alpha <= 0) {
-        l.state = "dead";
-        return;
-      }
+/* =========================
+   GLITCH TYPE "MOSH"
+========================= */
+let glitchTimer = null;
 
-      const dx1 = (Math.random() - 0.5) * 18;
-      const dx2 = (Math.random() - 0.5) * 18;
-      const dy1 = (Math.random() - 0.5) * 5;
-      const dy2 = (Math.random() - 0.5) * 5;
+function flashBars(n = 2) {
+  const chosen = [...strips].sort(() => Math.random() - 0.5).slice(0, n);
+  chosen.forEach(bar => {
+    bar.style.top = Math.random() * 100 + "%";
+    bar.style.height = (6 + Math.random() * 22) + "px";
+    bar.style.left = Math.random() * 12 + "%";
+    bar.style.right = Math.random() * 12 + "%";
+    bar.style.opacity = (0.18 + Math.random() * 0.38).toString();
+    bar.style.background = Math.random() > 0.5
+      ? "rgba(20,50,255,0.65)"
+      : "rgba(255,230,0,0.55)";
+  });
 
-      mainCtx.strokeStyle = `rgba(255,255,255,${l.alpha})`;
-      mainCtx.lineWidth = 1.6;
-      mainCtx.beginPath();
-      mainCtx.moveTo(l.x1 + dx1, l.y1 + dy1);
-      mainCtx.lineTo(l.x2 + dx2, l.y2 + dy2);
-      mainCtx.stroke();
+  setTimeout(() => {
+    chosen.forEach(bar => bar.style.opacity = "0");
+  }, 55 + Math.random() * 70);
+}
+
+function setLayerTransform(el, tx, ty, skewX = 0, skewY = 0, scaleX = 1, scaleY = 1) {
+  el.style.transform =
+    `translate(${tx}px, ${ty}px) skew(${skewX}deg, ${skewY}deg) scale(${scaleX}, ${scaleY})`;
+}
+
+function runMoshFrame() {
+  if (!glitchActive) {
+    mainLayer.style.transform = "none";
+    blueLayer.style.transform = "none";
+    yellowLayer.style.transform = "none";
+    mainLayer.style.filter = "none";
+    blueLayer.style.opacity = "0";
+    yellowLayer.style.opacity = "0";
+    glitchTimer = null;
+    return;
+  }
+
+  // base : léger décalage
+  const baseX = (Math.random() - 0.5) * 12;
+  const baseY = (Math.random() - 0.5) * 4;
+
+  // ghosts : gros split horizontal
+  const blueX = -18 - Math.random() * 26;
+  const yellowX = 18 + Math.random() * 26;
+
+  // mosh style : surtout horizontal, quasi sans rotation
+  const skewA = (Math.random() - 0.5) * 5.5;
+  const skewB = (Math.random() - 0.5) * 2.0;
+
+  setLayerTransform(mainLayer, baseX, baseY, skewA * 0.4, skewB * 0.2, 1, 1);
+  setLayerTransform(blueLayer, baseX + blueX, baseY + (Math.random() - 0.5) * 4, skewA, skewB, 1.02, 1);
+  setLayerTransform(yellowLayer, baseX + yellowX, baseY + (Math.random() - 0.5) * 4, -skewA, -skewB, 1.02, 1);
+
+  mainLayer.style.filter = `blur(${Math.random() > 0.72 ? 0.8 : 0}px)`;
+  blueLayer.style.opacity = (0.55 + Math.random() * 0.22).toString();
+  yellowLayer.style.opacity = (0.55 + Math.random() * 0.22).toString();
+
+  // smear par lettre
+  letters.forEach((triplet, i) => {
+    const drift = (i % 2 === 0 ? 1 : -1) * (4 + Math.random() * 10);
+    const rise = (Math.random() - 0.5) * 5;
+
+    triplet.blue.style.transform = `translate(${drift - 10}px, ${rise}px)`;
+    triplet.yellow.style.transform = `translate(${10 - drift}px, ${-rise}px)`;
+
+    // couche principale un peu “sale”
+    if (Math.random() > 0.82) {
+      triplet.main.style.transform = `translate(${(Math.random() - 0.5) * 4}px, ${(Math.random() - 0.5) * 2}px)`;
+    } else {
+      triplet.main.style.transform = "translate(0px, 0px)";
     }
   });
 
-  lines = lines.filter(l => l.state !== "dead");
+  if (Math.random() > 0.45) flashBars(2 + Math.floor(Math.random() * 2));
 
-  renderGlitchOverlay();
-
-  requestAnimationFrame(animate);
+  glitchTimer = setTimeout(runMoshFrame, 24 + Math.random() * 42);
 }
-animate();
 
-/* ================= LOGIQUE PRINCIPALE ================= */
+function startFinalMosh() {
+  glitchActive = true;
+
+  letters.forEach(triplet => {
+    const r = triplet.main.getBoundingClientRect();
+    spawnParticles(r.left + r.width / 2, r.top + r.height / 2, "mosh");
+  });
+
+  lines.forEach(line => {
+    line.state = "glitch";
+    line.alpha = 1;
+  });
+
+  playUploadedGlitchSound();
+  runMoshFrame();
+
+  setTimeout(() => {
+    glitchActive = false;
+    if (glitchTimer) clearTimeout(glitchTimer);
+
+    mainLayer.style.transform = "none";
+    blueLayer.style.transform = "none";
+    yellowLayer.style.transform = "none";
+    mainLayer.style.filter = "none";
+    blueLayer.style.opacity = "0";
+    yellowLayer.style.opacity = "0";
+
+    letters.forEach(triplet => {
+      triplet.main.classList.remove("gold");
+      triplet.main.style.color = "#6f6f6f";
+      triplet.main.style.transform = "translate(0px,0px)";
+      triplet.blue.style.transform = "translate(0px,0px)";
+      triplet.yellow.style.transform = "translate(0px,0px)";
+    });
+
+    strips.forEach(bar => bar.style.opacity = "0");
+  }, 1200);
+}
+
+/* =========================
+   MAIN
+========================= */
 const rhythm = [180, 120, 260, 140, 320, 200];
 const wrapper = document.getElementById("wrapper");
 
-function start() {
+function startAnimation() {
   if (started) return;
   started = true;
 
   initAudio();
-  document.querySelector(".click-instruction").style.opacity = 0;
+  document.querySelector(".click-instruction").style.opacity = "0";
 
   let delay = 0;
-  let x = 60;
-  let i = 0;
-  let prev = null;
+  let offsetX = 60;
+  let noteIndex = 0;
+  let prevLanded = null;
 
   words.forEach(word => {
     word.split("").forEach(char => {
-      const span = document.createElement("span");
-      span.className = "letter";
-      span.textContent = char;
-      span.style.left = x + "px";
-      lettersLayer.appendChild(span);
-      letters.push(span);
+      const triplet = createTriplet(char, offsetX);
+      letters.push(triplet);
 
-      const pan = (x / innerWidth) * 2 - 1;
+      const pan = getPan(offsetX);
 
-      span.addEventListener("mouseenter", () => {
+      triplet.main.addEventListener("mouseenter", () => {
         if (glitchActive) return;
-        if (!span.classList.contains("gold")) {
-          const rect = span.getBoundingClientRect();
+        if (!triplet.main.classList.contains("gold")) {
+          const rect = triplet.main.getBoundingClientRect();
           const freq = getQuantizedNote(rect.top, getCurrentChord());
 
-          span.classList.add("gold");
+          triplet.main.classList.add("gold");
           playChord(freq, pan);
-          spawnParticles(rect.left + rect.width / 2, rect.top + rect.height / 2);
+          spawnParticles(rect.left + rect.width / 2, rect.top + rect.height / 2, "gold");
 
           setTimeout(() => {
-            if (!glitchActive) span.classList.remove("gold");
+            if (!glitchActive) triplet.main.classList.remove("gold");
           }, 400);
         }
       });
 
       setTimeout(() => {
-        span.style.opacity = 1;
-        const y = 200 + Math.random() * 40;
-        span.style.top = y + "px";
+        setTripletOpacity(triplet, 1);
+        const finalY = 200 + Math.random() * 40;
+        setTripletTop(triplet, finalY);
 
         setTimeout(() => {
-          const rect = span.getBoundingClientRect();
+          const rect = triplet.main.getBoundingClientRect();
           const freq = getQuantizedNote(rect.top, getCurrentChord());
 
-          span.classList.add("gold");
+          triplet.main.classList.add("gold");
           playChord(freq, pan);
-          spawnParticles(rect.left + rect.width / 2, rect.top + rect.height / 2);
+          spawnParticles(rect.left + rect.width / 2, rect.top + rect.height / 2, "gold");
 
-          if (prev) {
-            createLine(prev.getBoundingClientRect(), rect);
+          landedCount++;
+
+          if (prevLanded) {
+            createLine(prevLanded.main, triplet.main);
           }
-          prev = span;
+          prevLanded = triplet;
 
-          landed++;
-
-          if (landed === letters.length) {
+          if (landedCount === letters.length) {
             setTimeout(() => {
-              startFinalGlitch();
-            }, 800);
+              startFinalMosh();
+            }, 850);
           }
-
         }, 1500);
-
       }, delay);
 
-      delay += rhythm[i % rhythm.length];
-      x += 40;
-      i++;
+      delay += rhythm[noteIndex % rhythm.length];
+      offsetX += 40;
+      noteIndex++;
 
-      if (i % 4 === 0) {
-        chordStep++;
-      }
+      if (noteIndex % 4 === 0) chordStep++;
     });
 
-    x += 60;
+    offsetX += 60;
   });
 }
 
-wrapper.addEventListener("click", start);
-wrapper.addEventListener("touchstart", start, { passive: true });
+wrapper.addEventListener("click", startAnimation);
+wrapper.addEventListener("touchstart", startAnimation, { passive: true });
 </script>
-
 </body>
 </html>
