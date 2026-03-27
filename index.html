@@ -4,51 +4,51 @@
 <meta charset="UTF-8">
 <link href='https://fonts.googleapis.com/css?family=Amethysta' rel='stylesheet'>
 <style>
-  html, body {
-    margin: 0; padding: 0;
-    width: 100%; height: 100%;
-    background: black;
-    overflow: hidden;
-    font-family: 'Amethysta', serif;
-  }
+html, body {
+  margin: 0; padding: 0;
+  width: 100%; height: 100%;
+  background: black;
+  overflow: hidden;
+  font-family: 'Amethysta', serif;
+}
 
-  canvas {
-    position: absolute;
-    top: 0;
-    left: 0;
-    pointer-events: none;
-  }
+canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
 
-  #wrapper {
-    position: absolute;
-    width: 100%; height: 100%;
-    display: flex; align-items: center; justify-content: center;
-    cursor: pointer;
-    z-index: 2;
-  }
+#wrapper {
+  position: absolute;
+  width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  z-index: 2;
+}
 
-  .click-instruction {
-    color: #888;
-    font-size: 1.4rem;
-    transition: opacity 0.5s;
-  }
+.click-instruction {
+  color: #888;
+  font-size: 1.4rem;
+  transition: opacity 0.5s;
+}
 
-  .letter {
-    position: absolute;
-    font-size: 2.4rem;
-    top: -100px;
-    opacity: 0;
-    color: #808080;
-    transition: top 1.5s ease-out, opacity 1s ease-out, color 0.4s ease;
-    font-weight: bold;
-    pointer-events: auto;
-    z-index: 3;
-  }
+.letter {
+  position: absolute;
+  font-size: 2.4rem;
+  top: -100px;
+  opacity: 0;
+  color: #808080;
+  transition: top 1.5s ease-out, opacity 1s ease-out, color 0.4s ease;
+  font-weight: bold;
+  pointer-events: auto;
+  z-index: 3;
+}
 
-  .gold {
-    color: #FFD700;
-    text-shadow: 0 0 15px rgba(255,215,0,0.9);
-  }
+.gold {
+  color: #FFD700;
+  text-shadow: 0 0 15px rgba(255,215,0,0.9);
+}
 </style>
 </head>
 <body>
@@ -67,7 +67,7 @@ let started = false;
 let allLetters = [];
 let constellationDone = false;
 
-// 🎧 INIT AUDIO
+// 🎧 AUDIO
 function initAudio() {
   if (!audioCtx) {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -75,26 +75,56 @@ function initAudio() {
   if (audioCtx.state === "suspended") audioCtx.resume();
 }
 
-// 🎼 accords mineurs (mélancoliques)
-const chords = [
-  [261.63, 311.13, 392.00], // Cm
-  [293.66, 349.23, 440.00], // Dm
-  [329.63, 392.00, 493.88], // Em
-  [349.23, 415.30, 523.25], // Fm
+// 🎼 GAMME LA MINEUR
+const scale = [0, 2, 3, 5, 7, 8, 10];
+
+// 🎼 PROGRESSION
+const progression = [
+  [0,2,4], // Am
+  [5,0,2], // F
+  [3,5,0], // C
+  [4,6,1]  // G
 ];
 
-function playChord(freqs, pan) {
-  freqs.forEach((f, i) => {
+let chordStep = 0;
+
+function midiToFreq(m) {
+  return 440 * Math.pow(2, (m - 69) / 12);
+}
+
+function getQuantizedNote(y, chord) {
+  const minY = 180;
+  const maxY = 260;
+
+  let t = (y - minY) / (maxY - minY);
+  t = Math.max(0, Math.min(1, t));
+
+  const octave = Math.floor(3 + (1 - t) * 2);
+  const degree = chord[Math.floor(Math.random() * chord.length)];
+
+  const midi = 57 + scale[degree] + (octave - 4) * 12;
+  return midiToFreq(midi);
+}
+
+function getCurrentChord() {
+  return progression[chordStep % progression.length];
+}
+
+// 🎧 ACCORD
+function playChord(freq, pan) {
+  const ratios = [1, 1.2, 1.5];
+
+  ratios.forEach((r, i) => {
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     const panner = audioCtx.createStereoPanner();
 
     osc.type = "triangle";
-    osc.frequency.value = f;
+    osc.frequency.value = freq * r;
 
     gain.gain.setValueAtTime(0, audioCtx.currentTime);
-    gain.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 0.05);
-    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.5);
+    gain.gain.linearRampToValueAtTime(0.18, audioCtx.currentTime + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.8);
 
     panner.pan.value = pan;
 
@@ -102,8 +132,8 @@ function playChord(freqs, pan) {
     gain.connect(panner);
     panner.connect(audioCtx.destination);
 
-    osc.start(audioCtx.currentTime + i * 0.02);
-    osc.stop(audioCtx.currentTime + 1.6);
+    osc.start(audioCtx.currentTime + i * 0.04);
+    osc.stop(audioCtx.currentTime + 2);
   });
 }
 
@@ -149,7 +179,6 @@ function animateParticles() {
   });
 
   particles = particles.filter(p => p.life > 0);
-
   requestAnimationFrame(animateParticles);
 }
 animateParticles();
@@ -170,6 +199,9 @@ function drawConstellation() {
   }
 }
 
+// 🎵 RYTHME
+const rhythm = [180, 120, 260, 140, 320, 200];
+
 function startAnimation() {
   if (started) return;
   started = true;
@@ -179,7 +211,7 @@ function startAnimation() {
 
   let delay = 0;
   let offsetX = 60;
-  let chordIndex = 0;
+  let noteIndex = 0;
 
   words.forEach(word => {
     word.split("").forEach(char => {
@@ -189,17 +221,23 @@ function startAnimation() {
       span.textContent = char;
       span.style.left = offsetX + "px";
 
-      const chord = chords[chordIndex % chords.length];
-      const pan = getPan(offsetX);
-
       document.body.appendChild(span);
       allLetters.push(span);
 
+      const pan = getPan(offsetX);
+
       span.addEventListener("mouseenter", () => {
         if (!span.classList.contains("gold")) {
+          const rect = span.getBoundingClientRect();
+          const freq = getQuantizedNote(rect.top, getCurrentChord());
+
           span.classList.add("gold");
-          playChord(chord, pan);
-          spawnParticles(offsetX, 220);
+          playChord(freq, pan);
+
+          spawnParticles(
+            rect.left + rect.width/2,
+            rect.top + rect.height/2
+          );
 
           setTimeout(() => span.classList.remove("gold"), 400);
         }
@@ -207,14 +245,22 @@ function startAnimation() {
 
       setTimeout(() => {
         span.style.opacity = "1";
-        span.style.top = (200 + Math.random() * 40) + "px";
+
+        const finalY = 200 + Math.random() * 40;
+        span.style.top = finalY + "px";
 
         setTimeout(() => {
-          span.classList.add("gold");
-          playChord(chord, pan);
-          spawnParticles(offsetX, 220);
+          const rect = span.getBoundingClientRect();
+          const freq = getQuantizedNote(rect.top, getCurrentChord());
 
-          // 🌌 déclenche constellation une fois
+          span.classList.add("gold");
+          playChord(freq, pan);
+
+          spawnParticles(
+            rect.left + rect.width/2,
+            rect.top + rect.height/2
+          );
+
           if (!constellationDone && allLetters.every(l => l.classList.contains("gold"))) {
             constellationDone = true;
             drawConstellation();
@@ -224,9 +270,15 @@ function startAnimation() {
 
       }, delay);
 
-      delay += 250;
+      delay += rhythm[noteIndex % rhythm.length];
       offsetX += 40;
-      chordIndex++;
+
+      noteIndex++;
+
+      // 🎼 progression harmonique
+      if (noteIndex % 4 === 0) {
+        chordStep++;
+      }
     });
 
     offsetX += 60;
@@ -234,7 +286,7 @@ function startAnimation() {
 
   setTimeout(() => {
     allLetters.forEach(l => l.classList.remove("gold"));
-  }, delay + 1800);
+  }, delay + 2000);
 }
 
 document.getElementById("wrapper")
