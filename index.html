@@ -7,7 +7,7 @@
 html, body {
   margin: 0; padding: 0;
   width: 100%; height: 100%;
-  background: transparent;
+  background: black;
   overflow: hidden;
   font-family: 'Amethysta', serif;
 }
@@ -65,6 +65,7 @@ const words = ["Orpheus", "CARENTHIR"];
 let audioCtx;
 let started = false;
 let allLetters = [];
+let landedCount = 0;
 let constellationDone = false;
 
 // 🎧 AUDIO
@@ -80,10 +81,10 @@ const scale = [0, 2, 3, 5, 7, 8, 10];
 
 // 🎼 PROGRESSION
 const progression = [
-  [0,2,4], // Am
-  [5,0,2], // F
-  [3,5,0], // C
-  [4,6,1]  // G
+  [0,2,4],
+  [5,0,2],
+  [3,5,0],
+  [4,6,1]
 ];
 
 let chordStep = 0;
@@ -141,10 +142,12 @@ function getPan(x) {
   return (x / window.innerWidth) * 2 - 1;
 }
 
-// 🌟 PARTICULES
+// 🌟 CANVAS
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
+
 let particles = [];
+let constellationLines = [];
 
 function resize() {
   canvas.width = window.innerWidth;
@@ -153,6 +156,7 @@ function resize() {
 resize();
 window.addEventListener("resize", resize);
 
+// ✨ PARTICULES
 function spawnParticles(x, y) {
   for (let i = 0; i < 15; i++) {
     particles.push({
@@ -164,9 +168,30 @@ function spawnParticles(x, y) {
   }
 }
 
-function animateParticles() {
+// 🌌 CONSTRUCTION CONSTELLATION
+function buildConstellation() {
+  constellationLines = [];
+
+  for (let i = 0; i < allLetters.length - 1; i++) {
+    const a = allLetters[i].getBoundingClientRect();
+    const b = allLetters[i + 1].getBoundingClientRect();
+
+    constellationLines.push({
+      x1: a.left + a.width/2,
+      y1: a.top + a.height/2,
+      x2: b.left + b.width/2,
+      y2: b.top + b.height/2,
+      progress: 0,
+      life: 1
+    });
+  }
+}
+
+// 🎨 ANIMATION
+function animate() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+  // particules
   particles.forEach(p => {
     p.x += p.vx;
     p.y += p.vy;
@@ -179,25 +204,32 @@ function animateParticles() {
   });
 
   particles = particles.filter(p => p.life > 0);
-  requestAnimationFrame(animateParticles);
-}
-animateParticles();
 
-// 🌌 CONSTELLATION
-function drawConstellation() {
-  ctx.strokeStyle = "rgba(255,215,0,0.4)";
-  ctx.lineWidth = 1;
+  // constellation ✨
+  constellationLines.forEach(line => {
+    line.progress += 0.02;
 
-  for (let i = 0; i < allLetters.length - 1; i++) {
-    const a = allLetters[i].getBoundingClientRect();
-    const b = allLetters[i + 1].getBoundingClientRect();
+    const x = line.x1 + (line.x2 - line.x1) * line.progress;
+    const y = line.y1 + (line.y2 - line.y1) * line.progress;
+
+    const alpha = line.life * (0.5 + Math.random() * 0.3);
+
+    ctx.strokeStyle = "rgba(255,215,0," + alpha + ")";
+    ctx.lineWidth = 1;
 
     ctx.beginPath();
-    ctx.moveTo(a.left + a.width/2, a.top + a.height/2);
-    ctx.lineTo(b.left + b.width/2, b.top + b.height/2);
+    ctx.moveTo(line.x1, line.y1);
+    ctx.lineTo(x, y);
     ctx.stroke();
-  }
+
+    if (line.progress >= 1) {
+      line.life -= 0.002;
+    }
+  });
+
+  requestAnimationFrame(animate);
 }
+animate();
 
 // 🎵 RYTHME
 const rhythm = [180, 120, 260, 140, 320, 200];
@@ -234,10 +266,7 @@ function startAnimation() {
           span.classList.add("gold");
           playChord(freq, pan);
 
-          spawnParticles(
-            rect.left + rect.width/2,
-            rect.top + rect.height/2
-          );
+          spawnParticles(rect.left + rect.width/2, rect.top + rect.height/2);
 
           setTimeout(() => span.classList.remove("gold"), 400);
         }
@@ -245,7 +274,6 @@ function startAnimation() {
 
       setTimeout(() => {
         span.style.opacity = "1";
-
         const finalY = 200 + Math.random() * 40;
         span.style.top = finalY + "px";
 
@@ -256,14 +284,13 @@ function startAnimation() {
           span.classList.add("gold");
           playChord(freq, pan);
 
-          spawnParticles(
-            rect.left + rect.width/2,
-            rect.top + rect.height/2
-          );
+          spawnParticles(rect.left + rect.width/2, rect.top + rect.height/2);
 
-          if (!constellationDone && allLetters.every(l => l.classList.contains("gold"))) {
+          landedCount++;
+
+          if (!constellationDone && landedCount === allLetters.length) {
             constellationDone = true;
-            drawConstellation();
+            setTimeout(buildConstellation, 400);
           }
 
         }, 1500);
@@ -272,13 +299,9 @@ function startAnimation() {
 
       delay += rhythm[noteIndex % rhythm.length];
       offsetX += 40;
-
       noteIndex++;
 
-      // 🎼 progression harmonique
-      if (noteIndex % 4 === 0) {
-        chordStep++;
-      }
+      if (noteIndex % 4 === 0) chordStep++;
     });
 
     offsetX += 60;
