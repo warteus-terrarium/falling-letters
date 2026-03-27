@@ -12,11 +12,19 @@
     font-family: 'Amethysta', serif;
   }
 
+  canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+  }
+
   #wrapper {
     position: absolute;
     width: 100%; height: 100%;
-    cursor: pointer;
     display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    z-index: 2;
   }
 
   .click-instruction {
@@ -34,15 +42,18 @@
     transition: top 1.5s ease-out, opacity 1s ease-out, color 0.4s ease;
     font-weight: bold;
     pointer-events: auto;
+    z-index: 3;
   }
 
   .gold {
     color: #FFD700;
-    text-shadow: 0 0 12px rgba(255, 215, 0, 0.8);
+    text-shadow: 0 0 15px rgba(255,215,0,0.9);
   }
 </style>
 </head>
 <body>
+
+<canvas id="canvas"></canvas>
 
 <div id="wrapper">
   <div class="click-instruction">Clique pour éveiller Orpheus</div>
@@ -51,48 +62,112 @@
 <script>
 const words = ["Orpheus", "CARENTHIR"];
 
-// 🎼 gamme cohérente
-const scale = [261.63, 293.66, 329.63, 392.00, 440.00, 493.88];
-
 let audioCtx;
 let started = false;
 let allLetters = [];
+let constellationDone = false;
 
-// 🔓 audio
+// 🎧 INIT AUDIO
 function initAudio() {
   if (!audioCtx) {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   }
-  if (audioCtx.state === "suspended") {
-    audioCtx.resume();
-  }
+  if (audioCtx.state === "suspended") audioCtx.resume();
 }
 
-// 🎧 note
-function playNote(freq, pan = 0) {
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  const panner = audioCtx.createStereoPanner();
+// 🎼 accords mineurs (mélancoliques)
+const chords = [
+  [261.63, 311.13, 392.00], // Cm
+  [293.66, 349.23, 440.00], // Dm
+  [329.63, 392.00, 493.88], // Em
+  [349.23, 415.30, 523.25], // Fm
+];
 
-  osc.type = "triangle";
-  osc.frequency.value = freq;
+function playChord(freqs, pan) {
+  freqs.forEach((f, i) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    const panner = audioCtx.createStereoPanner();
 
-  gain.gain.setValueAtTime(0, audioCtx.currentTime);
-  gain.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.02);
-  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1);
+    osc.type = "triangle";
+    osc.frequency.value = f;
 
-  panner.pan.value = pan;
+    gain.gain.setValueAtTime(0, audioCtx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.5);
 
-  osc.connect(gain);
-  gain.connect(panner);
-  panner.connect(audioCtx.destination);
+    panner.pan.value = pan;
 
-  osc.start();
-  osc.stop(audioCtx.currentTime + 1);
+    osc.connect(gain);
+    gain.connect(panner);
+    panner.connect(audioCtx.destination);
+
+    osc.start(audioCtx.currentTime + i * 0.02);
+    osc.stop(audioCtx.currentTime + 1.6);
+  });
 }
 
 function getPan(x) {
   return (x / window.innerWidth) * 2 - 1;
+}
+
+// 🌟 PARTICULES
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+let particles = [];
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener("resize", resize);
+
+function spawnParticles(x, y) {
+  for (let i = 0; i < 15; i++) {
+    particles.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 2,
+      vy: (Math.random() - 0.5) * 2,
+      life: 1
+    });
+  }
+}
+
+function animateParticles() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  particles.forEach(p => {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life -= 0.02;
+
+    ctx.fillStyle = "rgba(255,215,0," + p.life + ")";
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  particles = particles.filter(p => p.life > 0);
+
+  requestAnimationFrame(animateParticles);
+}
+animateParticles();
+
+// 🌌 CONSTELLATION
+function drawConstellation() {
+  ctx.strokeStyle = "rgba(255,215,0,0.4)";
+  ctx.lineWidth = 1;
+
+  for (let i = 0; i < allLetters.length - 1; i++) {
+    const a = allLetters[i].getBoundingClientRect();
+    const b = allLetters[i + 1].getBoundingClientRect();
+
+    ctx.beginPath();
+    ctx.moveTo(a.left + a.width/2, a.top + a.height/2);
+    ctx.lineTo(b.left + b.width/2, b.top + b.height/2);
+    ctx.stroke();
+  }
 }
 
 function startAnimation() {
@@ -104,7 +179,7 @@ function startAnimation() {
 
   let delay = 0;
   let offsetX = 60;
-  let noteIndex = 0;
+  let chordIndex = 0;
 
   words.forEach(word => {
     word.split("").forEach(char => {
@@ -114,36 +189,36 @@ function startAnimation() {
       span.textContent = char;
       span.style.left = offsetX + "px";
 
-      const note = scale[noteIndex % scale.length];
+      const chord = chords[chordIndex % chords.length];
       const pan = getPan(offsetX);
-
-      span.dataset.note = note;
-      span.dataset.pan = pan;
 
       document.body.appendChild(span);
       allLetters.push(span);
 
-      // HOVER interaction ✨
       span.addEventListener("mouseenter", () => {
         if (!span.classList.contains("gold")) {
           span.classList.add("gold");
-          playNote(note, pan);
+          playChord(chord, pan);
+          spawnParticles(offsetX, 220);
 
-          setTimeout(() => {
-            span.classList.remove("gold");
-          }, 400);
+          setTimeout(() => span.classList.remove("gold"), 400);
         }
       });
 
-      // DESCENTE
       setTimeout(() => {
         span.style.opacity = "1";
         span.style.top = (200 + Math.random() * 40) + "px";
 
-        // IMPACT (son + doré)
         setTimeout(() => {
           span.classList.add("gold");
-          playNote(note, pan);
+          playChord(chord, pan);
+          spawnParticles(offsetX, 220);
+
+          // 🌌 déclenche constellation une fois
+          if (!constellationDone && allLetters.every(l => l.classList.contains("gold"))) {
+            constellationDone = true;
+            drawConstellation();
+          }
 
         }, 1500);
 
@@ -151,21 +226,19 @@ function startAnimation() {
 
       delay += 250;
       offsetX += 40;
-      noteIndex++;
+      chordIndex++;
     });
 
     offsetX += 60;
   });
 
-  // 🕒 Quand tout est fini → tout redevient gris
   setTimeout(() => {
     allLetters.forEach(l => l.classList.remove("gold"));
   }, delay + 1800);
 }
 
-const wrapper = document.getElementById("wrapper");
-wrapper.addEventListener("click", startAnimation);
-wrapper.addEventListener("touchstart", startAnimation);
+document.getElementById("wrapper")
+  .addEventListener("click", startAnimation);
 </script>
 
 </body>
