@@ -92,9 +92,8 @@ canvas {
     opacity 1s ease-out,
     color 0.22s ease,
     text-shadow 0.22s ease,
-    filter 0.12s ease,
-    transform 0.08s ease;
-  will-change: top, opacity, transform, color, filter, text-shadow;
+    filter 0.12s ease;
+  will-change: top, opacity, color, filter, text-shadow, transform;
 }
 
 #letters-main .gold {
@@ -365,6 +364,7 @@ let started = false;
 let landedCount = 0;
 let glitchActive = false;
 let animationFinished = false;
+let floatingActive = false;
 
 function createTriplet(char, leftPx) {
   const main = document.createElement("span");
@@ -381,7 +381,15 @@ function createTriplet(char, leftPx) {
   blueLayer.appendChild(blue);
   yellowLayer.appendChild(yellow);
 
-  return { main, blue, yellow, hoverLock: false };
+  return {
+    main,
+    blue,
+    yellow,
+    hoverLock: false,
+    floatPhase: Math.random() * Math.PI * 2,
+    floatSpeed: 0.0009 + Math.random() * 0.0012,
+    floatAmplitude: 2 + Math.random() * 3
+  };
 }
 
 function setTripletTop(triplet, topPx) {
@@ -395,6 +403,28 @@ function setTripletOpacity(triplet, value) {
   triplet.blue.style.opacity = value;
   triplet.yellow.style.opacity = value;
 }
+
+/* =========================
+   FLOTTAISON APRÈS GLITCH
+========================= */
+function updateFloatingLetters(time) {
+  if (!floatingActive) {
+    requestAnimationFrame(updateFloatingLetters);
+    return;
+  }
+
+  letters.forEach(triplet => {
+    if (glitchActive) return;
+
+    const y = Math.sin(time * triplet.floatSpeed + triplet.floatPhase) * triplet.floatAmplitude;
+    const x = Math.cos(time * triplet.floatSpeed * 0.55 + triplet.floatPhase) * 0.8;
+
+    triplet.main.style.transform = `translate(${x}px, ${y}px)`;
+  });
+
+  requestAnimationFrame(updateFloatingLetters);
+}
+requestAnimationFrame(updateFloatingLetters);
 
 /* =========================
    CANVAS / CONSTELLATION / PARTICULES
@@ -633,10 +663,12 @@ function resetPostGlitchInteractivity() {
 
   strips.forEach(bar => bar.style.opacity = "0");
   animationFinished = true;
+  floatingActive = true;
 }
 
 function startFinalMosh() {
   glitchActive = true;
+  floatingActive = false;
 
   letters.forEach(triplet => {
     const r = triplet.main.getBoundingClientRect();
