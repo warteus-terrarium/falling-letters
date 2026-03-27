@@ -67,13 +67,13 @@ let started = false;
 let allLetters = [];
 let landedCount = 0;
 
-// 🎧 AUDIO
+// AUDIO
 function initAudio() {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   if (audioCtx.state === "suspended") audioCtx.resume();
 }
 
-// 🎼 GAMME LA MINEUR
+// GAMME & PROGRESSION
 const scale = [0,2,3,5,7,8,10];
 const progression = [[0,2,4],[5,0,2],[3,5,0],[4,6,1]];
 let chordStep = 0;
@@ -89,7 +89,7 @@ function getQuantizedNote(y,chord){
 }
 function getCurrentChord(){return progression[chordStep%progression.length];}
 
-// 🎧 ACCORD
+// ACCORD
 function playChord(freq,pan){
   const ratios=[1,1.2,1.5];
   ratios.forEach((r,i)=>{
@@ -107,7 +107,7 @@ function playChord(freq,pan){
 }
 function getPan(x){return (x/window.innerWidth)*2-1;}
 
-// 🌟 CANVAS
+// CANVAS
 const canvas=document.getElementById("canvas");
 const ctx=canvas.getContext("2d");
 let particles=[], constellationLines=[];
@@ -119,10 +119,21 @@ function spawnParticles(x,y){
   for(let i=0;i<15;i++){particles.push({x,y,vx:(Math.random()-0.5)*2,vy:(Math.random()-0.5)*2,life:1});}
 }
 
+// BUILD CONSTELLATION
+function buildConstellation(){
+  constellationLines=[];
+  for(let i=0;i<allLetters.length-1;i++){
+    const a=allLetters[i].getBoundingClientRect();
+    const b=allLetters[i+1].getBoundingClientRect();
+    constellationLines.push({x1:a.left+a.width/2,y1:a.top+a.height/2,x2:b.left+b.width/2,y2:b.top+b.height/2,progress:0,life:1});
+  }
+}
+
+// ANIMATE
 function animate(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
 
-  // particules
+  // PARTICULES
   particles.forEach(p=>{
     p.x+=p.vx; p.y+=p.vy; p.life-=0.02;
     ctx.fillStyle="rgba(255,215,0,"+p.life+")";
@@ -130,37 +141,59 @@ function animate(){
   });
   particles=particles.filter(p=>p.life>0);
 
-  // constellation
+  // CONSTELLATION
   constellationLines.forEach(line=>{
     if(line.progress<1){
       line.progress+=0.02;
       const x=line.x1+(line.x2-line.x1)*line.progress;
       const y=line.y1+(line.y2-line.y1)*line.progress;
-      const alpha=0.5+Math.random()*0.3;
-      ctx.strokeStyle="rgba(255,215,0,"+alpha+")";
+      ctx.strokeStyle="rgba(255,215,0,0.5)";
       ctx.lineWidth=1;
       ctx.beginPath();
       ctx.moveTo(line.x1,line.y1);
       ctx.lineTo(x,y);
       ctx.stroke();
     }else{
-      // fade lent une fois terminé
-      line.life-=0.002;
-      ctx.strokeStyle="rgba(255,215,0,"+line.life+")";
-      ctx.lineWidth=1;
-      ctx.beginPath();
-      ctx.moveTo(line.x1,line.y1);
-      ctx.lineTo(line.x2,line.y2);
-      ctx.stroke();
+      // fade glitch effect if marked
+      if(line.glitch){
+        const alpha=Math.random()*0.8+0.2;
+        ctx.strokeStyle="rgba(0,200,255,"+alpha+")";
+        ctx.lineWidth=1.5;
+        ctx.beginPath();
+        ctx.moveTo(line.x1,line.y1);
+        ctx.lineTo(line.x2,line.y2);
+        ctx.stroke();
+        line.life-=0.05;
+      }else{
+        line.life-=0.002;
+        ctx.strokeStyle="rgba(255,215,0,"+line.life+")";
+        ctx.lineWidth=1;
+        ctx.beginPath();
+        ctx.moveTo(line.x1,line.y1);
+        ctx.lineTo(line.x2,line.y2);
+        ctx.stroke();
+      }
     }
   });
+  constellationLines=constellationLines.filter(l=>l.life>0);
 
   requestAnimationFrame(animate);
 }
-animate();
 
-// 🎵 RYTHME
+// RYTHME
 const rhythm=[180,120,260,140,320,200];
+
+function playGlitchScream(){
+  // bruit fort
+  const osc=audioCtx.createOscillator();
+  const gain=audioCtx.createGain();
+  osc.type="square";
+  osc.frequency.value=300;
+  gain.gain.setValueAtTime(1,audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+0.3);
+  osc.connect(gain); gain.connect(audioCtx.destination);
+  osc.start(); osc.stop(audioCtx.currentTime+0.3);
+}
 
 function startAnimation(){
   if(started) return;
@@ -190,7 +223,6 @@ function startAnimation(){
         }
       });
 
-      // chute avec délai
       setTimeout(()=>{
         span.style.opacity="1";
         const finalY=200+Math.random()*40;
@@ -202,22 +234,38 @@ function startAnimation(){
           span.classList.add("gold");
           playChord(freq,pan);
           spawnParticles(rect.left+rect.width/2,rect.top+rect.height/2);
-
           landedCount++;
 
-          // ➡️ Constellation ligne entre prevLetter et current
           if(prevLetter){
-            const rectPrev=prevLetter.getBoundingClientRect();
-            constellationLines.push({
-              x1: rectPrev.left+rectPrev.width/2,
-              y1: rectPrev.top+rectPrev.height/2,
-              x2: rect.left+rect.width/2,
-              y2: rect.top+rect.height/2,
-              progress:0,
-              life:1
-            });
+            constellationLines.push({x1:prevLetter.getBoundingClientRect().left+prevLetter.offsetWidth/2,
+                                     y1:prevLetter.getBoundingClientRect().top+prevLetter.offsetHeight/2,
+                                     x2:rect.left+rect.width/2,
+                                     y2:rect.top+rect.height/2,
+                                     progress:0,
+                                     life:1});
           }
-          prevLetter = span;
+          prevLetter=span;
+
+          // Effet glitch + screamer après tout
+          if(landedCount===allLetters.length){
+            setTimeout(()=>{
+              // glitch sur lettres
+              allLetters.forEach(l=>{
+                const original=l.style.color;
+                let i=0;
+                const glitchInt=setInterval(()=>{
+                  const colors=["#00ffff","#ff00ff","#00ffff","#ff00ff"];
+                  l.style.color=colors[i%colors.length];
+                  i++;
+                  if(i>6){ clearInterval(glitchInt); l.style.color="#808080"; }
+                },50);
+              });
+              // glitch + fade lignes
+              constellationLines.forEach(line=>line.glitch=true);
+              // bruit fort
+              playGlitchScream();
+            },1000);
+          }
 
         },1500);
 
@@ -230,8 +278,6 @@ function startAnimation(){
     });
     offsetX+=60;
   });
-
-  setTimeout(()=>allLetters.forEach(l=>l.classList.remove("gold")),delay+2000);
 }
 
 document.getElementById("wrapper").addEventListener("click",startAnimation);
