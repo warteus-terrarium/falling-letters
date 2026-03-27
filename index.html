@@ -128,7 +128,7 @@ canvas {
 const words = ["Orpheus", "CARENTHIR"];
 
 /* =========================
-   AUDIO — repris du fichier uploadé
+   AUDIO — base reprise du fichier uploadé
 ========================= */
 let actx = null;
 let bufs = [];
@@ -140,35 +140,41 @@ function initAudio() {
     }
     if (bufs.length) return;
 
-    for (let i = 0; i < 4; i++) {
-      const dur = 1.0 + Math.random() * 0.7;
+    for (let i = 0; i < 5; i++) {
+      const dur = 1.1 + Math.random() * 0.8;
       const sr = 44100;
       const buf = actx.createBuffer(1, sr * dur, sr);
       const dd = buf.getChannelData(0);
 
       for (let j = 0; j < buf.length; j++) {
         const t = j / sr;
-        let s = (Math.random() * 2 - 1) * 0.18;
+
+        let s = (Math.random() * 2 - 1) * 0.28;
 
         if (t < 0.3) {
-          s += Math.sin(220 * t * 2 * Math.PI) * 0.26;
-        } else if (t < 0.7) {
-          s += Math.sin(440 * t * 2 * Math.PI) * 0.2;
-          s += Math.sin(880 * t * 2 * Math.PI) * 0.1;
+          s += Math.sin(220 * t * 2 * Math.PI) * 0.34;
+          s += Math.sin(330 * t * 2 * Math.PI) * 0.12;
+        } else if (t < 0.8) {
+          s += Math.sin(440 * t * 2 * Math.PI) * 0.28;
+          s += Math.sin(880 * t * 2 * Math.PI) * 0.15;
+          s += (Math.random() * 2 - 1) * 0.08;
         } else {
-          s += Math.sin(330 * t * 2 * Math.PI) * 0.16;
-          s += (Math.random() * 2 - 1) * 0.07;
+          s += Math.sin(330 * t * 2 * Math.PI) * 0.2;
+          s += (Math.random() * 2 - 1) * 0.14;
         }
 
-        const fs = dur * 0.6;
+        const fs = dur * 0.58;
         if (t > fs) s *= Math.max(0, 1 - (t - fs) / (dur - fs));
-        if (t < 0.05) s *= t / 0.05;
+        if (t < 0.04) s *= t / 0.04;
+
         dd[j] = s;
       }
 
       bufs.push(buf);
     }
-  } catch (e) {}
+  } catch (e) {
+    console.error("Erreur initAudio:", e);
+  }
 }
 
 function playUploadedGlitchSound() {
@@ -179,24 +185,35 @@ function playUploadedGlitchSound() {
     const src = actx.createBufferSource();
     src.buffer = bufs[Math.floor(Math.random() * bufs.length)];
 
-    const g = actx.createGain();
     const hp = actx.createBiquadFilter();
     const bp = actx.createBiquadFilter();
+    const compressor = actx.createDynamicsCompressor();
+    const g = actx.createGain();
 
     hp.type = "highpass";
-    hp.frequency.value = 650;
+    hp.frequency.value = 600;
 
     bp.type = "bandpass";
-    bp.frequency.value = 1700 + Math.random() * 1200;
+    bp.frequency.value = 1650 + Math.random() * 1400;
     bp.Q.value = 0.9;
 
-    g.gain.value = 0.55;
-    src.playbackRate.value = 0.82 + Math.random() * 0.35;
+    compressor.threshold.value = -28;
+    compressor.knee.value = 18;
+    compressor.ratio.value = 14;
+    compressor.attack.value = 0.003;
+    compressor.release.value = 0.2;
+
+    g.gain.setValueAtTime(1.7, actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 1.15);
+
+    src.playbackRate.value = 0.78 + Math.random() * 0.32;
 
     src.connect(hp);
     hp.connect(bp);
-    bp.connect(g);
+    bp.connect(compressor);
+    compressor.connect(g);
     g.connect(actx.destination);
+
     src.start();
   };
 
@@ -208,10 +225,10 @@ function playUploadedGlitchSound() {
 ========================= */
 const scale = [0, 2, 3, 5, 7, 8, 10];
 const progression = [
-  [0,2,4], // Am
-  [5,0,2], // F
-  [3,5,0], // C
-  [4,6,1]  // G
+  [0, 2, 4],
+  [5, 0, 2],
+  [3, 5, 0],
+  [4, 6, 1]
 ];
 let chordStep = 0;
 
@@ -279,7 +296,6 @@ const mainLayer = document.getElementById("letters-main");
 const blueLayer = document.getElementById("letters-blue");
 const yellowLayer = document.getElementById("letters-yellow");
 
-const scene = document.getElementById("scene");
 const strips = [
   document.getElementById("gs1"),
   document.getElementById("gs2"),
@@ -511,15 +527,12 @@ function runMoshFrame() {
     return;
   }
 
-  // base : léger décalage
   const baseX = (Math.random() - 0.5) * 12;
   const baseY = (Math.random() - 0.5) * 4;
 
-  // ghosts : gros split horizontal
   const blueX = -18 - Math.random() * 26;
   const yellowX = 18 + Math.random() * 26;
 
-  // mosh style : surtout horizontal, quasi sans rotation
   const skewA = (Math.random() - 0.5) * 5.5;
   const skewB = (Math.random() - 0.5) * 2.0;
 
@@ -531,7 +544,6 @@ function runMoshFrame() {
   blueLayer.style.opacity = (0.55 + Math.random() * 0.22).toString();
   yellowLayer.style.opacity = (0.55 + Math.random() * 0.22).toString();
 
-  // smear par lettre
   letters.forEach((triplet, i) => {
     const drift = (i % 2 === 0 ? 1 : -1) * (4 + Math.random() * 10);
     const rise = (Math.random() - 0.5) * 5;
@@ -539,7 +551,6 @@ function runMoshFrame() {
     triplet.blue.style.transform = `translate(${drift - 10}px, ${rise}px)`;
     triplet.yellow.style.transform = `translate(${10 - drift}px, ${-rise}px)`;
 
-    // couche principale un peu “sale”
     if (Math.random() > 0.82) {
       triplet.main.style.transform = `translate(${(Math.random() - 0.5) * 4}px, ${(Math.random() - 0.5) * 2}px)`;
     } else {
@@ -550,6 +561,21 @@ function runMoshFrame() {
   if (Math.random() > 0.45) flashBars(2 + Math.floor(Math.random() * 2));
 
   glitchTimer = setTimeout(runMoshFrame, 24 + Math.random() * 42);
+}
+
+function resetPostGlitchInteractivity() {
+  blueLayer.style.opacity = "0";
+  yellowLayer.style.opacity = "0";
+
+  letters.forEach(triplet => {
+    triplet.main.classList.remove("gold");
+    triplet.main.style.color = "#6f6f6f";
+    triplet.main.style.transform = "translate(0px,0px)";
+    triplet.blue.style.transform = "translate(0px,0px)";
+    triplet.yellow.style.transform = "translate(0px,0px)";
+  });
+
+  strips.forEach(bar => bar.style.opacity = "0");
 }
 
 function startFinalMosh() {
@@ -576,18 +602,8 @@ function startFinalMosh() {
     blueLayer.style.transform = "none";
     yellowLayer.style.transform = "none";
     mainLayer.style.filter = "none";
-    blueLayer.style.opacity = "0";
-    yellowLayer.style.opacity = "0";
 
-    letters.forEach(triplet => {
-      triplet.main.classList.remove("gold");
-      triplet.main.style.color = "#6f6f6f";
-      triplet.main.style.transform = "translate(0px,0px)";
-      triplet.blue.style.transform = "translate(0px,0px)";
-      triplet.yellow.style.transform = "translate(0px,0px)";
-    });
-
-    strips.forEach(bar => bar.style.opacity = "0");
+    resetPostGlitchInteractivity();
   }, 1200);
 }
 
@@ -604,6 +620,9 @@ function startAnimation() {
   initAudio();
   document.querySelector(".click-instruction").style.opacity = "0";
 
+  // ✅ libère les interactions souris pour le hover après le lancement
+  wrapper.style.pointerEvents = "none";
+
   let delay = 0;
   let offsetX = 60;
   let noteIndex = 0;
@@ -618,18 +637,20 @@ function startAnimation() {
 
       triplet.main.addEventListener("mouseenter", () => {
         if (glitchActive) return;
-        if (!triplet.main.classList.contains("gold")) {
-          const rect = triplet.main.getBoundingClientRect();
-          const freq = getQuantizedNote(rect.top, getCurrentChord());
+        if (!started) return;
 
-          triplet.main.classList.add("gold");
-          playChord(freq, pan);
-          spawnParticles(rect.left + rect.width / 2, rect.top + rect.height / 2, "gold");
+        const rect = triplet.main.getBoundingClientRect();
+        const freq = getQuantizedNote(rect.top, getCurrentChord());
 
-          setTimeout(() => {
-            if (!glitchActive) triplet.main.classList.remove("gold");
-          }, 400);
-        }
+        triplet.main.classList.add("gold");
+        playChord(freq, pan);
+        spawnParticles(rect.left + rect.width / 2, rect.top + rect.height / 2, "gold");
+
+        setTimeout(() => {
+          if (!glitchActive) {
+            triplet.main.classList.remove("gold");
+          }
+        }, 420);
       });
 
       setTimeout(() => {
