@@ -281,13 +281,11 @@ function playChord(freq, pan) {
   });
 }
 
-/* hover plus mélodieux */
 function playHoverAccent(freq, pan) {
   if (!actx) initAudio();
   if (!actx) return;
 
   const now = actx.currentTime;
-
   const panner = actx.createStereoPanner();
   panner.pan.value = pan;
   panner.connect(actx.destination);
@@ -386,6 +384,7 @@ function createTriplet(char, leftPx) {
     blue,
     yellow,
     hoverLock: false,
+    localGlitch: false,
     floatPhase: Math.random() * Math.PI * 2,
     floatSpeed: 0.0009 + Math.random() * 0.0012,
     floatAmplitude: 2 + Math.random() * 3
@@ -408,19 +407,16 @@ function setTripletOpacity(triplet, value) {
    FLOTTAISON APRÈS GLITCH
 ========================= */
 function updateFloatingLetters(time) {
-  if (!floatingActive) {
-    requestAnimationFrame(updateFloatingLetters);
-    return;
+  if (floatingActive) {
+    letters.forEach(triplet => {
+      if (glitchActive || triplet.localGlitch) return;
+
+      const y = Math.sin(time * triplet.floatSpeed + triplet.floatPhase) * triplet.floatAmplitude;
+      const x = Math.cos(time * triplet.floatSpeed * 0.55 + triplet.floatPhase) * 0.8;
+
+      triplet.main.style.transform = `translate(${x}px, ${y}px)`;
+    });
   }
-
-  letters.forEach(triplet => {
-    if (glitchActive) return;
-
-    const y = Math.sin(time * triplet.floatSpeed + triplet.floatPhase) * triplet.floatAmplitude;
-    const x = Math.cos(time * triplet.floatSpeed * 0.55 + triplet.floatPhase) * 0.8;
-
-    triplet.main.style.transform = `translate(${x}px, ${y}px)`;
-  });
 
   requestAnimationFrame(updateFloatingLetters);
 }
@@ -576,7 +572,7 @@ function animateCanvas() {
 animateCanvas();
 
 /* =========================
-   GLITCH TYPE MOSH
+   GLITCH GLOBAL TYPE MOSH
 ========================= */
 let glitchTimer = null;
 
@@ -648,6 +644,76 @@ function runMoshFrame() {
   glitchTimer = setTimeout(runMoshFrame, 24 + Math.random() * 42);
 }
 
+/* =========================
+   MINI GLITCH LOCAL HOVER
+========================= */
+function startLocalHoverGlitch(triplet, pan) {
+  if (!animationFinished || glitchActive || triplet.hoverLock || triplet.localGlitch) return;
+
+  triplet.hoverLock = true;
+  triplet.localGlitch = true;
+  triplet.main.classList.add("gold");
+
+  const rect = triplet.main.getBoundingClientRect();
+  spawnParticles(rect.left + rect.width / 2, rect.top + rect.height / 2, "mosh");
+  playUploadedGlitchSound();
+
+  const localLineCount = 2 + Math.floor(Math.random() * 2);
+  for (let i = 0; i < localLineCount; i++) {
+    const y = rect.top + Math.random() * rect.height;
+    const w = rect.width * (0.8 + Math.random() * 0.9);
+
+    lines.push({
+      x1: rect.left - rect.width * 0.25,
+      y1: y,
+      x2: rect.left - rect.width * 0.25 + w,
+      y2: y + (Math.random() - 0.5) * 2,
+      p: 1,
+      state: "glitch",
+      alpha: 0.9
+    });
+  }
+
+  const localStart = performance.now();
+  const duration = 320 + Math.random() * 120;
+
+  function animateLocal() {
+    const elapsed = performance.now() - localStart;
+    if (elapsed >= duration || glitchActive) {
+      triplet.main.style.transform = "translate(0px, 0px)";
+      triplet.blue.style.transform = "translate(0px, 0px)";
+      triplet.yellow.style.transform = "translate(0px, 0px)";
+      triplet.blue.style.opacity = "0";
+      triplet.yellow.style.opacity = "0";
+      triplet.main.classList.remove("gold");
+      triplet.localGlitch = false;
+      triplet.hoverLock = false;
+      return;
+    }
+
+    const dx = (Math.random() - 0.5) * 12;
+    const dy = (Math.random() - 0.5) * 4;
+    const skewX = (Math.random() - 0.5) * 5;
+
+    triplet.main.style.transform = `translate(${dx}px, ${dy}px) skewX(${skewX}deg)`;
+    triplet.blue.style.opacity = String(0.45 + Math.random() * 0.25);
+    triplet.yellow.style.opacity = String(0.45 + Math.random() * 0.25);
+
+    triplet.blue.style.transform =
+      `translate(${dx - (8 + Math.random() * 10)}px, ${dy + (Math.random() - 0.5) * 3}px) skewX(${skewX * 1.2}deg)`;
+
+    triplet.yellow.style.transform =
+      `translate(${dx + (8 + Math.random() * 10)}px, ${dy + (Math.random() - 0.5) * 3}px) skewX(${-skewX * 1.2}deg)`;
+
+    requestAnimationFrame(animateLocal);
+  }
+
+  requestAnimationFrame(animateLocal);
+}
+
+/* =========================
+   RESET / FIN GLITCH GLOBAL
+========================= */
 function resetPostGlitchInteractivity() {
   blueLayer.style.opacity = "0";
   yellowLayer.style.opacity = "0";
@@ -659,6 +725,7 @@ function resetPostGlitchInteractivity() {
     triplet.blue.style.transform = "translate(0px,0px)";
     triplet.yellow.style.transform = "translate(0px,0px)";
     triplet.hoverLock = false;
+    triplet.localGlitch = false;
   });
 
   strips.forEach(bar => bar.style.opacity = "0");
@@ -700,7 +767,13 @@ function startFinalMosh() {
    HOVER
 ========================= */
 function triggerHoverAccent(triplet, pan) {
-  if (!animationFinished || glitchActive || triplet.hoverLock) return;
+  if (!animationFinished || glitchActive || triplet.hoverLock || triplet.localGlitch) return;
+
+  // 1 chance sur 15
+  if (Math.floor(Math.random() * 15) === 0) {
+    startLocalHoverGlitch(triplet, pan);
+    return;
+  }
 
   triplet.hoverLock = true;
   triplet.main.classList.add("gold");
