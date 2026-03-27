@@ -9,7 +9,7 @@ html, body {
   padding: 0;
   width: 100%;
   height: 100%;
-  background: black;
+  background: transparent;
   overflow: hidden;
   font-family: "Amethysta", serif;
 }
@@ -18,7 +18,6 @@ canvas {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  z-index: 1;
 }
 
 #wrapper {
@@ -44,7 +43,6 @@ canvas {
   z-index: 3;
   pointer-events: none;
   transform-origin: center center;
-  will-change: transform, filter;
 }
 
 .letter {
@@ -59,25 +57,14 @@ canvas {
     top 1.5s ease-out,
     opacity 1s ease-out,
     color 0.35s ease,
-    text-shadow 0.35s ease,
-    filter 0.15s ease;
-  will-change: top, opacity, color, text-shadow, filter;
+    text-shadow 0.35s ease;
 }
 
 .gold {
   color: #FFD700;
   text-shadow:
-    0 0 8px rgba(255, 215, 0, 0.85),
-    0 0 18px rgba(255, 215, 0, 0.45);
-}
-
-.glitch-blue {
-  color: #72d9ff !important;
-  text-shadow:
-    -2px 0 rgba(0, 180, 255, 0.95),
-    2px 0 rgba(130, 230, 255, 0.9),
-    0 0 16px rgba(0, 190, 255, 0.7);
-  filter: saturate(1.4);
+    0 0 10px rgba(255, 215, 0, 0.9),
+    0 0 20px rgba(255, 215, 0, 0.5);
 }
 </style>
 </head>
@@ -93,466 +80,227 @@ canvas {
 <script>
 const words = ["Orpheus", "CARENTHIR"];
 
-/* =========================
-   AUDIO
-   repris du fichier uploadé
-========================= */
+/* ================= AUDIO ================= */
 let actx = null;
 let bufs = [];
 
 function initAudio() {
-  try {
-    if (!actx) {
-      actx = new (window.AudioContext || window.webkitAudioContext)();
+  if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+  if (bufs.length) return;
+
+  for (let i = 0; i < 4; i++) {
+    const sr = 44100;
+    const dur = 1.2;
+    const buf = actx.createBuffer(1, sr * dur, sr);
+    const data = buf.getChannelData(0);
+
+    for (let j = 0; j < buf.length; j++) {
+      data[j] = (Math.random() * 2 - 1) * 0.6;
     }
-
-    if (bufs.length) return;
-
-    for (let i = 0; i < 4; i++) {
-      const dur = 1.0 + Math.random() * 0.7;
-      const sr = 44100;
-      const buf = actx.createBuffer(1, sr * dur, sr);
-      const dd = buf.getChannelData(0);
-
-      for (let j = 0; j < buf.length; j++) {
-        const t = j / sr;
-        let s = (Math.random() * 2 - 1) * 0.18;
-
-        if (t < 0.3) {
-          s += Math.sin(220 * t * 2 * Math.PI) * 0.26;
-        } else if (t < 0.7) {
-          s += Math.sin(440 * t * 2 * Math.PI) * 0.2;
-          s += Math.sin(880 * t * 2 * Math.PI) * 0.1;
-        } else {
-          s += Math.sin(330 * t * 2 * Math.PI) * 0.16;
-          s += (Math.random() * 2 - 1) * 0.07;
-        }
-
-        const fs = dur * 0.6;
-        if (t > fs) s *= Math.max(0, 1 - (t - fs) / (dur - fs));
-        if (t < 0.05) s *= t / 0.05;
-
-        dd[j] = s;
-      }
-
-      bufs.push(buf);
-    }
-  } catch (e) {}
+    bufs.push(buf);
+  }
 }
 
 function playGlitchSound() {
   if (!actx) initAudio();
-  if (!actx || !bufs.length) return;
+  const src = actx.createBufferSource();
+  src.buffer = bufs[Math.floor(Math.random() * bufs.length)];
 
-  const go = () => {
-    const src = actx.createBufferSource();
-    src.buffer = bufs[Math.floor(Math.random() * bufs.length)];
+  const gain = actx.createGain();
+  gain.gain.setValueAtTime(1, actx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 1);
 
-    const g = actx.createGain();
-    const hp = actx.createBiquadFilter();
-    const bp = actx.createBiquadFilter();
+  src.connect(gain);
+  gain.connect(actx.destination);
 
-    hp.type = "highpass";
-    hp.frequency.value = 700;
-
-    bp.type = "bandpass";
-    bp.frequency.value = 1900 + Math.random() * 1000;
-    bp.Q.value = 0.9;
-
-    g.gain.value = 0.95;
-    src.playbackRate.value = 0.72 + Math.random() * 0.22;
-
-    src.connect(hp);
-    hp.connect(bp);
-    bp.connect(g);
-    g.connect(actx.destination);
-
-    src.start();
-  };
-
-  actx.state === "suspended" ? actx.resume().then(go) : go();
+  src.start();
 }
 
-/* =========================
-   MUSIQUE DES LETTRES
-========================= */
-const scale = [0, 2, 3, 5, 7, 8, 10];
-const progression = [
-  [0, 2, 4], // Am
-  [5, 0, 2], // F
-  [3, 5, 0], // C
-  [4, 6, 1]  // G
-];
+/* ================= MUSIC ================= */
+const scale = [0,2,3,5,7,8,10];
+const progression = [[0,2,4],[5,0,2],[3,5,0],[4,6,1]];
 let chordStep = 0;
 
-function midiToFreq(midi) {
-  return 440 * Math.pow(2, (midi - 69) / 12);
+function midiToFreq(m){return 440*Math.pow(2,(m-69)/12);}
+
+function getQuantizedNote(y,chord){
+  const t = Math.max(0, Math.min(1, (y-180)/80));
+  const octave = Math.floor(3 + (1-t)*2);
+  const degree = chord[Math.floor(Math.random()*chord.length)];
+  return midiToFreq(57 + scale[degree] + (octave-4)*12);
 }
 
-function getCurrentChord() {
-  return progression[chordStep % progression.length];
-}
+function getCurrentChord(){return progression[chordStep%progression.length];}
 
-function getQuantizedNote(y, chord) {
-  const minY = 180;
-  const maxY = 260;
-
-  let t = (y - minY) / (maxY - minY);
-  t = Math.max(0, Math.min(1, t));
-
-  const octave = Math.floor(3 + (1 - t) * 2);
-  const degree = chord[Math.floor(Math.random() * chord.length)];
-  const midi = 57 + scale[degree] + (octave - 4) * 12;
-
-  return midiToFreq(midi);
-}
-
-function getPan(x) {
-  return (x / window.innerWidth) * 2 - 1;
-}
-
-function playChord(freq, pan) {
+function playChord(freq,pan){
   if (!actx) initAudio();
-  if (!actx) return;
 
-  const ratios = [1, 1.2, 1.5];
+  [1,1.2,1.5].forEach((r,i)=>{
+    const o=actx.createOscillator();
+    const g=actx.createGain();
+    const p=actx.createStereoPanner();
 
-  ratios.forEach((r, i) => {
-    const osc = actx.createOscillator();
-    const gain = actx.createGain();
-    const panner = actx.createStereoPanner();
-    const filter = actx.createBiquadFilter();
+    o.type="triangle";
+    o.frequency.value=freq*r;
 
-    osc.type = "triangle";
-    osc.frequency.value = freq * r;
+    g.gain.setValueAtTime(0,actx.currentTime);
+    g.gain.linearRampToValueAtTime(0.2,actx.currentTime+0.05);
+    g.gain.exponentialRampToValueAtTime(0.001,actx.currentTime+1.5);
 
-    filter.type = "lowpass";
-    filter.frequency.value = 1800;
+    p.pan.value=pan;
 
-    gain.gain.setValueAtTime(0.0001, actx.currentTime);
-    gain.gain.linearRampToValueAtTime(0.16, actx.currentTime + 0.045);
-    gain.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 1.9);
-
-    panner.pan.value = pan;
-
-    osc.connect(filter);
-    filter.connect(gain);
-    gain.connect(panner);
-    panner.connect(actx.destination);
-
-    osc.start(actx.currentTime + i * 0.035);
-    osc.stop(actx.currentTime + 2);
+    o.connect(g); g.connect(p); p.connect(actx.destination);
+    o.start(actx.currentTime+i*0.04);
+    o.stop(actx.currentTime+2);
   });
 }
 
-/* =========================
-   CANVAS / PARTICULES / CONSTELLATION
-========================= */
-const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d");
-const lettersLayer = document.getElementById("letters-layer");
+/* ================= CANVAS ================= */
+const canvas=document.getElementById("canvas");
+const ctx=canvas.getContext("2d");
 
-function resizeCanvas() {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-}
-resizeCanvas();
-window.addEventListener("resize", resizeCanvas);
+function resize(){canvas.width=innerWidth;canvas.height=innerHeight;}
+resize(); addEventListener("resize",resize);
 
-let particles = [];
-let constellationLines = [];
+let lines=[];
 
-function spawnParticles(x, y) {
-  for (let i = 0; i < 18; i++) {
-    particles.push({
-      x,
-      y,
-      vx: (Math.random() - 0.5) * 2.5,
-      vy: (Math.random() - 0.5) * 2.5,
-      life: 1,
-      color: "gold"
-    });
-  }
-}
-
-function spawnBlueGlitchParticles(x, y) {
-  for (let i = 0; i < 26; i++) {
-    particles.push({
-      x,
-      y,
-      vx: (Math.random() - 0.5) * 5.2,
-      vy: (Math.random() - 0.5) * 5.2,
-      life: 1,
-      color: "blue"
-    });
-  }
-}
-
-function createConstellationLine(fromEl, toEl) {
-  const a = fromEl.getBoundingClientRect();
-  const b = toEl.getBoundingClientRect();
-
-  constellationLines.push({
-    x1: a.left + a.width / 2,
-    y1: a.top + a.height / 2,
-    x2: b.left + b.width / 2,
-    y2: b.top + b.height / 2,
-    progress: 0,
-    state: "drawing",
-    alpha: 0.55
+function createLine(a,b){
+  lines.push({
+    x1:a.left+a.width/2,
+    y1:a.top+a.height/2,
+    x2:b.left+b.width/2,
+    y2:b.top+b.height/2,
+    p:0,
+    state:"draw"
   });
 }
 
-/* =========================
-   ETAT GLOBAL
-========================= */
-let started = false;
-let landedCount = 0;
-let allLetters = [];
-let glitchActive = false;
-let globalJitterRAF = null;
+function animate(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
 
-function applyGlobalJitter() {
-  if (!glitchActive) {
-    lettersLayer.style.transform = "translate(0px, 0px)";
-    lettersLayer.style.filter = "none";
-    globalJitterRAF = null;
-    return;
-  }
+  lines.forEach(l=>{
+    if(l.state==="draw"){
+      l.p+=0.05;
+      if(l.p>=1){l.p=1;l.state="full";}
+      const x=l.x1+(l.x2-l.x1)*l.p;
+      const y=l.y1+(l.y2-l.y1)*l.p;
 
-  const x = (Math.random() - 0.5) * 14;
-  const y = (Math.random() - 0.5) * 10;
-  const skew = (Math.random() - 0.5) * 2.5;
-  lettersLayer.style.transform = `translate(${x}px, ${y}px) skewX(${skew}deg)`;
-  lettersLayer.style.filter = `drop-shadow(0 0 ${6 + Math.random() * 6}px rgba(70, 200, 255, 0.55))`;
-
-  allLetters.forEach((letter, i) => {
-    const bluePalette = ["#57d8ff", "#82e5ff", "#2bbcff", "#a8efff", "#7fdfff"];
-    letter.classList.add("glitch-blue");
-    letter.style.color = bluePalette[(i + Math.floor(Math.random() * bluePalette.length)) % bluePalette.length];
-  });
-
-  globalJitterRAF = requestAnimationFrame(applyGlobalJitter);
-}
-
-function stopGlobalJitter() {
-  glitchActive = false;
-
-  if (globalJitterRAF) {
-    cancelAnimationFrame(globalJitterRAF);
-    globalJitterRAF = null;
-  }
-
-  lettersLayer.style.transform = "translate(0px, 0px)";
-  lettersLayer.style.filter = "none";
-
-  allLetters.forEach(letter => {
-    letter.classList.remove("gold");
-    letter.classList.remove("glitch-blue");
-    letter.style.color = "#808080";
-    letter.style.filter = "none";
-  });
-}
-
-function startFinalGlitch() {
-  glitchActive = true;
-
-  allLetters.forEach(letter => {
-    const rect = letter.getBoundingClientRect();
-    spawnBlueGlitchParticles(
-      rect.left + rect.width / 2,
-      rect.top + rect.height / 2
-    );
-  });
-
-  constellationLines.forEach(line => {
-    if (line.state !== "dead") {
-      line.state = "glitch";
-      line.alpha = 1;
-    }
-  });
-
-  playGlitchSound();
-  applyGlobalJitter();
-
-  setTimeout(() => {
-    stopGlobalJitter();
-  }, 1350);
-}
-
-/* =========================
-   BOUCLE D’ANIMATION
-========================= */
-function animate() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  particles.forEach(p => {
-    p.x += p.vx;
-    p.y += p.vy;
-    p.life -= (p.color === "blue" ? 0.03 : 0.02);
-
-    if (p.color === "blue") {
-      ctx.fillStyle = `rgba(80, 210, 255, ${Math.max(0, p.life)})`;
-    } else {
-      ctx.fillStyle = `rgba(255, 215, 0, ${Math.max(0, p.life)})`;
-    }
-
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, p.color === "blue" ? 2.4 : 2, 0, Math.PI * 2);
-    ctx.fill();
-  });
-
-  particles = particles.filter(p => p.life > 0);
-
-  constellationLines.forEach(line => {
-    if (line.state === "drawing") {
-      line.progress += 0.04;
-      if (line.progress >= 1) {
-        line.progress = 1;
-        line.state = "visible";
-      }
-
-      const x = line.x1 + (line.x2 - line.x1) * line.progress;
-      const y = line.y1 + (line.y2 - line.y1) * line.progress;
-
-      const alpha = 0.38 + Math.random() * 0.18;
-      ctx.strokeStyle = `rgba(255, 215, 140, ${alpha})`;
-      ctx.lineWidth = 1.2;
+      ctx.strokeStyle="rgba(255,215,150,0.6)";
       ctx.beginPath();
-      ctx.moveTo(line.x1, line.y1);
-      ctx.lineTo(x, y);
+      ctx.moveTo(l.x1,l.y1);
+      ctx.lineTo(x,y);
+      ctx.stroke();
+    } else if(l.state==="full"){
+      ctx.strokeStyle="rgba(255,215,150,0.4)";
+      ctx.beginPath();
+      ctx.moveTo(l.x1,l.y1);
+      ctx.lineTo(l.x2,l.y2);
+      ctx.stroke();
+    } else if(l.state==="glitch"){
+      l.alpha-=0.05;
+      ctx.strokeStyle="rgba(255,255,255,"+l.alpha+")";
+      ctx.beginPath();
+      ctx.moveTo(l.x1+(Math.random()-0.5)*10,l.y1+(Math.random()-0.5)*10);
+      ctx.lineTo(l.x2+(Math.random()-0.5)*10,l.y2+(Math.random()-0.5)*10);
       ctx.stroke();
     }
-
-    else if (line.state === "visible") {
-      const alpha = 0.30 + Math.random() * 0.15;
-      ctx.strokeStyle = `rgba(255, 225, 170, ${alpha})`;
-      ctx.lineWidth = 1.1;
-      ctx.beginPath();
-      ctx.moveTo(line.x1, line.y1);
-      ctx.lineTo(line.x2, line.y2);
-      ctx.stroke();
-    }
-
-    else if (line.state === "glitch") {
-      line.alpha -= 0.045;
-
-      const dx1 = (Math.random() - 0.5) * 6;
-      const dy1 = (Math.random() - 0.5) * 6;
-      const dx2 = (Math.random() - 0.5) * 6;
-      const dy2 = (Math.random() - 0.5) * 6;
-
-      const alpha = Math.max(0, line.alpha);
-      const blue = 180 + Math.floor(Math.random() * 70);
-
-      ctx.strokeStyle = `rgba(40, ${blue}, 255, ${alpha})`;
-      ctx.lineWidth = 1.9;
-      ctx.beginPath();
-      ctx.moveTo(line.x1 + dx1, line.y1 + dy1);
-      ctx.lineTo(line.x2 + dx2, line.y2 + dy2);
-      ctx.stroke();
-
-      if (line.alpha <= 0) {
-        line.state = "dead";
-      }
-    }
   });
-
-  constellationLines = constellationLines.filter(line => line.state !== "dead");
 
   requestAnimationFrame(animate);
 }
 animate();
 
-/* =========================
-   LOGIQUE PRINCIPALE
-========================= */
-const rhythm = [180, 120, 260, 140, 320, 200];
-const wrapper = document.getElementById("wrapper");
+/* ================= JITTER GLOBAL ================= */
+let glitch=false;
+const layer=document.getElementById("letters-layer");
 
-function startAnimation() {
-  if (started) return;
-  started = true;
+function jitter(){
+  if(!glitch){
+    layer.style.transform="none";
+    return;
+  }
+
+  // ⚡ jitter violent type UI glitch
+  const x=(Math.random()-0.5)*30;
+  const y=(Math.random()-0.5)*20;
+  const r=(Math.random()-0.5)*8;
+  const s=1+(Math.random()-0.5)*0.1;
+
+  layer.style.transform=
+    `translate(${x}px,${y}px) rotate(${r}deg) scale(${s})`;
+
+  setTimeout(()=>requestAnimationFrame(jitter), Math.random()*40);
+}
+
+/* ================= MAIN ================= */
+let letters=[];
+let landed=0;
+
+function start(){
+  if(glitch) return;
 
   initAudio();
-  document.querySelector(".click-instruction").style.opacity = "0";
+  document.querySelector(".click-instruction").style.opacity=0;
 
-  let delay = 0;
-  let offsetX = 60;
-  let noteIndex = 0;
-  let previousLandedLetter = null;
+  let delay=0,x=60,i=0;
+  let prev=null;
 
-  words.forEach(word => {
-    word.split("").forEach(char => {
-      const span = document.createElement("span");
-      span.className = "letter";
-      span.textContent = char;
-      span.style.left = offsetX + "px";
-      lettersLayer.appendChild(span);
-      allLetters.push(span);
+  words.forEach(w=>{
+    w.split("").forEach(c=>{
+      const span=document.createElement("span");
+      span.className="letter";
+      span.textContent=c;
+      span.style.left=x+"px";
+      layer.appendChild(span);
+      letters.push(span);
 
-      const pan = getPan(offsetX);
+      const pan=(x/innerWidth)*2-1;
 
-      span.addEventListener("mouseenter", () => {
-        if (glitchActive) return;
-        if (!span.classList.contains("gold")) {
-          const rect = span.getBoundingClientRect();
-          const freq = getQuantizedNote(rect.top, getCurrentChord());
+      setTimeout(()=>{
+        span.style.opacity=1;
+        const y=200+Math.random()*40;
+        span.style.top=y+"px";
 
+        setTimeout(()=>{
+          const rect=span.getBoundingClientRect();
           span.classList.add("gold");
-          playChord(freq, pan);
-          spawnParticles(rect.left + rect.width / 2, rect.top + rect.height / 2);
 
-          setTimeout(() => {
-            if (!glitchActive) span.classList.remove("gold");
-          }, 400);
-        }
-      });
+          playChord(getQuantizedNote(rect.top,getCurrentChord()),pan);
 
-      setTimeout(() => {
-        span.style.opacity = "1";
-        const finalY = 200 + Math.random() * 40;
-        span.style.top = finalY + "px";
+          if(prev) createLine(prev.getBoundingClientRect(),rect);
+          prev=span;
 
-        setTimeout(() => {
-          const rect = span.getBoundingClientRect();
-          const freq = getQuantizedNote(rect.top, getCurrentChord());
+          landed++;
 
-          span.classList.add("gold");
-          playChord(freq, pan);
-          spawnParticles(rect.left + rect.width / 2, rect.top + rect.height / 2);
+          if(landed===letters.length){
+            setTimeout(()=>{
+              glitch=true;
+              lines.forEach(l=>{l.state="glitch";l.alpha=1;});
+              playGlitchSound();
+              jitter();
 
-          landedCount++;
+              setTimeout(()=>{
+                glitch=false;
+                letters.forEach(l=>l.classList.remove("gold"));
+              },1200);
 
-          if (previousLandedLetter) {
-            createConstellationLine(previousLandedLetter, span);
-          }
-          previousLandedLetter = span;
-
-          if (landedCount === allLetters.length) {
-            setTimeout(() => {
-              startFinalGlitch();
-            }, 950);
+            },800);
           }
 
-        }, 1500);
-      }, delay);
+        },1500);
 
-      delay += rhythm[noteIndex % rhythm.length];
-      offsetX += 40;
-      noteIndex++;
+      },delay);
 
-      if (noteIndex % 4 === 0) {
-        chordStep++;
-      }
+      delay+=[180,120,260,140,320,200][i%6];
+      x+=40;
+      i++;
+      if(i%4===0) chordStep++;
     });
-
-    offsetX += 60;
+    x+=60;
   });
 }
 
-wrapper.addEventListener("click", startAnimation);
-wrapper.addEventListener("touchstart", startAnimation, { passive: true });
+document.getElementById("wrapper").onclick=start;
 </script>
 
 </body>
