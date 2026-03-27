@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <link href="https://fonts.googleapis.com/css?family=Amethysta" rel="stylesheet">
-
 <style>
 html, body {
   margin: 0;
@@ -16,7 +15,6 @@ html, body {
   font-family: "Amethysta", serif;
 }
 
-/* texture légère */
 body::before {
   content: "";
   position: fixed;
@@ -25,14 +23,23 @@ body::before {
   z-index: 0;
   background:
     radial-gradient(circle at 20% 30%, rgba(255,255,255,0.08) 0 1px, transparent 1px 100%),
+    radial-gradient(circle at 70% 60%, rgba(255,255,255,0.06) 0 1px, transparent 1px 100%),
+    radial-gradient(circle at 40% 80%, rgba(255,255,255,0.05) 0 1px, transparent 1px 100%),
     repeating-linear-gradient(
       0deg,
-      rgba(255,255,255,0.03) 0px,
-      rgba(255,255,255,0.03) 1px,
+      rgba(255,255,255,0.035) 0px,
+      rgba(255,255,255,0.035) 1px,
       transparent 1px,
       transparent 4px
     );
   opacity: 0.7;
+}
+
+canvas {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
 }
 
 #wrapper {
@@ -46,155 +53,837 @@ body::before {
 }
 
 .click-instruction {
-  color: #888;
+  color: #8a8a8a;
   font-size: 1.4rem;
   text-align: center;
+  transition: opacity 0.5s ease;
+  text-shadow: 0 0 8px rgba(255,255,255,0.12);
 }
 
-/* =========================
-   LETTRES
-========================= */
+#scene {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+}
+
+.letters-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  transform-origin: center center;
+  will-change: transform, opacity, filter;
+}
+
+#letters-main { z-index: 6; }
+#letters-blue { z-index: 5; opacity: 0; mix-blend-mode: multiply; }
+#letters-yellow { z-index: 4; opacity: 0; mix-blend-mode: multiply; }
+
 .letter {
   position: absolute;
   top: -100px;
   opacity: 0;
+  color: #7a7a7a;
+  font-weight: bold;
   white-space: pre;
   pointer-events: auto;
-
   transition:
-    top 1.6s ease-out,
-    opacity 1.2s ease-out,
-    color 0.3s ease,
-    text-shadow 0.3s ease;
-
-  color: #7a7a7a;
+    top 1.5s ease-out,
+    opacity 1s ease-out,
+    color 0.22s ease,
+    text-shadow 0.22s ease,
+    filter 0.12s ease;
+  will-change: top, opacity, color, filter, text-shadow, transform;
 }
 
-/* ligne 1 (titre) */
-.line1 {
+.line-main {
   font-size: 3.8rem;
-  font-weight: bold;
 }
 
-/* ligne 2 (sous-titre) */
-.line2 {
-  font-size: 2.2rem;
-  opacity: 0.85;
+.line-sub {
+  font-size: 2.25rem;
+  opacity: 0.92;
 }
 
-/* doré */
-.gold {
+#letters-main .gold {
   color: #FFD700 !important;
   text-shadow:
-    0 0 10px rgba(255,215,0,0.9),
-    0 0 20px rgba(255,215,0,0.5);
+    0 0 8px rgba(255, 215, 0, 0.9),
+    0 0 18px rgba(255, 215, 0, 0.55),
+    0 0 28px rgba(255, 215, 0, 0.22);
 }
 
+#letters-blue .letter {
+  color: rgba(45, 65, 255, 0.85);
+  text-shadow: 0 0 4px rgba(45, 65, 255, 0.45);
+}
+
+#letters-yellow .letter {
+  color: rgba(255, 232, 0, 0.85);
+  text-shadow: 0 0 4px rgba(255, 232, 0, 0.4);
+}
+
+.glitch-strip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 24px;
+  opacity: 0;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+  z-index: 9;
+  background: rgba(255,255,255,0.08);
+}
 </style>
 </head>
-
 <body>
 
+<canvas id="canvas"></canvas>
+
+<div id="scene">
+  <div id="letters-yellow" class="letters-layer"></div>
+  <div id="letters-blue" class="letters-layer"></div>
+  <div id="letters-main" class="letters-layer"></div>
+
+  <div class="glitch-strip" id="gs1"></div>
+  <div class="glitch-strip" id="gs2"></div>
+  <div class="glitch-strip" id="gs3"></div>
+  <div class="glitch-strip" id="gs4"></div>
+</div>
+
 <div id="wrapper">
-  <div class="click-instruction">
-    Cliquez ici pour réveiller Orphée.
-  </div>
+  <div class="click-instruction">Cliquez ici pour réveiller Orphée.</div>
 </div>
 
 <script>
-/* =========================
-   TEXTE
-========================= */
-const lines = [
-  { text: "Orpheus Caranthir", class: "line1" },
-  { text: "          Barde mélancolique, Roi du rêve.", class: "line2" }
+const linesData = [
+  {
+    text: "Orpheus Caranthir",
+    className: "line-main",
+    yBase: 210,
+    charSpacing: 38,
+    delayFactor: 1
+  },
+  {
+    text: "          Barde mélancolique, Roi du rêve.",
+    className: "line-sub",
+    yBase: 290,
+    charSpacing: 26,
+    delayFactor: 1.45
+  }
 ];
 
 /* =========================
-   AUDIO SIMPLE
+   AUDIO — paramètres restaurés
 ========================= */
 let actx = null;
+let bufs = [];
 
 function initAudio() {
-  if (!actx) {
-    actx = new (window.AudioContext || window.webkitAudioContext)();
+  try {
+    if (!actx) {
+      actx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (bufs.length) return;
+
+    for (let i = 0; i < 4; i++) {
+      const dur = 1.0 + Math.random() * 0.7;
+      const sr = 44100;
+      const buf = actx.createBuffer(1, sr * dur, sr);
+      const dd = buf.getChannelData(0);
+
+      for (let j = 0; j < buf.length; j++) {
+        const t = j / sr;
+        let s = (Math.random() * 2 - 1) * 0.18;
+
+        if (t < 0.3) {
+          s += Math.sin(220 * t * 2 * Math.PI) * 0.26;
+        } else if (t < 0.7) {
+          s += Math.sin(440 * t * 2 * Math.PI) * 0.2;
+          s += Math.sin(880 * t * 2 * Math.PI) * 0.1;
+        } else {
+          s += Math.sin(330 * t * 2 * Math.PI) * 0.16;
+          s += (Math.random() * 2 - 1) * 0.07;
+        }
+
+        const fs = dur * 0.6;
+        if (t > fs) s *= Math.max(0, 1 - (t - fs) / (dur - fs));
+        if (t < 0.05) s *= t / 0.05;
+        dd[j] = s;
+      }
+      bufs.push(buf);
+    }
+  } catch (e) {
+    console.error(e);
   }
 }
 
-function playNote(freq) {
-  const osc = actx.createOscillator();
-  const gain = actx.createGain();
+function playUploadedGlitchSound() {
+  if (!actx) initAudio();
+  if (!actx || !bufs.length) return;
 
-  osc.type = "triangle";
-  osc.frequency.value = freq;
+  const go = () => {
+    const src = actx.createBufferSource();
+    src.buffer = bufs[Math.floor(Math.random() * bufs.length)];
+    const g = actx.createGain();
 
-  gain.gain.setValueAtTime(0.0001, actx.currentTime);
-  gain.gain.linearRampToValueAtTime(0.2, actx.currentTime + 0.05);
-  gain.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 1.5);
+    g.gain.value = 0.35;
+    src.connect(g);
+    g.connect(actx.destination);
 
-  osc.connect(gain);
-  gain.connect(actx.destination);
+    src.playbackRate.value = 0.8 + Math.random() * 0.5;
+    src.start();
+  };
 
-  osc.start();
-  osc.stop(actx.currentTime + 1.5);
+  actx.state === "suspended" ? actx.resume().then(go) : go();
 }
 
 /* =========================
-   ANIMATION
+   MUSIQUE DES LETTRES
 ========================= */
+const scale = [0, 2, 3, 5, 7, 8, 10];
+const progression = [
+  [0, 2, 4],
+  [5, 0, 2],
+  [3, 5, 0],
+  [4, 6, 1]
+];
+let chordStep = 0;
+
+function midiToFreq(m) {
+  return 440 * Math.pow(2, (m - 69) / 12);
+}
+
+function getCurrentChord() {
+  return progression[chordStep % progression.length];
+}
+
+function getQuantizedNote(y, chord) {
+  const minY = 180;
+  const maxY = 340;
+  let t = (y - minY) / (maxY - minY);
+  t = Math.max(0, Math.min(1, t));
+  const octave = Math.floor(3 + (1 - t) * 2);
+  const degree = chord[Math.floor(Math.random() * chord.length)];
+  const midi = 57 + scale[degree] + (octave - 4) * 12;
+  return midiToFreq(midi);
+}
+
+function getPan(x) {
+  return (x / window.innerWidth) * 2 - 1;
+}
+
+function playChord(freq, pan) {
+  if (!actx) initAudio();
+  if (!actx) return;
+
+  [1, 1.2, 1.5].forEach((r, i) => {
+    const osc = actx.createOscillator();
+    const gain = actx.createGain();
+    const panner = actx.createStereoPanner();
+    const filter = actx.createBiquadFilter();
+
+    osc.type = "triangle";
+    osc.frequency.value = freq * r;
+
+    filter.type = "lowpass";
+    filter.frequency.value = 1800;
+
+    gain.gain.setValueAtTime(0.0001, actx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.16, actx.currentTime + 0.045);
+    gain.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 1.7);
+
+    panner.pan.value = pan;
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(panner);
+    panner.connect(actx.destination);
+
+    osc.start(actx.currentTime + i * 0.035);
+    osc.stop(actx.currentTime + 1.9);
+  });
+}
+
+function playHoverAccent(freq, pan) {
+  if (!actx) initAudio();
+  if (!actx) return;
+
+  const now = actx.currentTime;
+  const panner = actx.createStereoPanner();
+  panner.pan.value = pan;
+  panner.connect(actx.destination);
+
+  const freqs = [freq, freq * 1.25];
+  freqs.forEach((f, idx) => {
+    const osc = actx.createOscillator();
+    const gain = actx.createGain();
+    const filter = actx.createBiquadFilter();
+
+    osc.type = idx === 0 ? "triangle" : "sine";
+    osc.frequency.setValueAtTime(f * 1.04, now);
+    osc.frequency.exponentialRampToValueAtTime(f, now + 0.16);
+
+    filter.type = "lowpass";
+    filter.frequency.value = 2400;
+
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(idx === 0 ? 0.14 : 0.09, now + 0.018);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(panner);
+
+    osc.start(now + idx * 0.012);
+    osc.stop(now + 0.3);
+  });
+
+  const noiseDur = 0.07;
+  const sr = actx.sampleRate;
+  const buf = actx.createBuffer(1, Math.floor(sr * noiseDur), sr);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) {
+    data[i] = (Math.random() * 2 - 1) * 0.06;
+  }
+
+  const noise = actx.createBufferSource();
+  const ng = actx.createGain();
+  const nhp = actx.createBiquadFilter();
+
+  nhp.type = "highpass";
+  nhp.frequency.value = 2200;
+
+  ng.gain.setValueAtTime(0.0001, now);
+  ng.gain.linearRampToValueAtTime(0.028, now + 0.01);
+  ng.gain.exponentialRampToValueAtTime(0.001, now + noiseDur);
+
+  noise.buffer = buf;
+  noise.connect(nhp);
+  nhp.connect(ng);
+  ng.connect(panner);
+
+  noise.start(now);
+  noise.stop(now + noiseDur);
+}
+
+/* =========================
+   DOM / LETTRES
+========================= */
+const mainLayer = document.getElementById("letters-main");
+const blueLayer = document.getElementById("letters-blue");
+const yellowLayer = document.getElementById("letters-yellow");
+
+const strips = [
+  document.getElementById("gs1"),
+  document.getElementById("gs2"),
+  document.getElementById("gs3"),
+  document.getElementById("gs4")
+];
+
+let letters = [];
 let started = false;
+let landedCount = 0;
+let glitchActive = false;
+let animationFinished = false;
+let floatingActive = false;
+
+function createTriplet(char, leftPx, className) {
+  const main = document.createElement("span");
+  const blue = document.createElement("span");
+  const yellow = document.createElement("span");
+
+  [main, blue, yellow].forEach(el => {
+    el.className = `letter ${className}`;
+    el.textContent = char;
+    el.style.left = leftPx + "px";
+  });
+
+  mainLayer.appendChild(main);
+  blueLayer.appendChild(blue);
+  yellowLayer.appendChild(yellow);
+
+  return {
+    main,
+    blue,
+    yellow,
+    hoverLock: false,
+    localGlitch: false,
+    floatPhase: Math.random() * Math.PI * 2,
+    floatSpeed: 0.0009 + Math.random() * 0.0012,
+    floatAmplitude: 2 + Math.random() * 3
+  };
+}
+
+function setTripletTop(triplet, topPx) {
+  triplet.main.style.top = topPx + "px";
+  triplet.blue.style.top = topPx + "px";
+  triplet.yellow.style.top = topPx + "px";
+}
+
+function setTripletOpacity(triplet, value) {
+  triplet.main.style.opacity = value;
+  triplet.blue.style.opacity = value;
+  triplet.yellow.style.opacity = value;
+}
+
+/* =========================
+   FLOTTAISON APRÈS GLITCH
+========================= */
+function updateFloatingLetters(time) {
+  if (floatingActive) {
+    letters.forEach(triplet => {
+      if (glitchActive || triplet.localGlitch) return;
+
+      const y = Math.sin(time * triplet.floatSpeed + triplet.floatPhase) * triplet.floatAmplitude;
+      const x = Math.cos(time * triplet.floatSpeed * 0.55 + triplet.floatPhase) * 0.8;
+
+      triplet.main.style.transform = `translate(${x}px, ${y}px)`;
+    });
+  }
+
+  requestAnimationFrame(updateFloatingLetters);
+}
+requestAnimationFrame(updateFloatingLetters);
+
+/* =========================
+   CANVAS / CONSTELLATION / PARTICULES
+========================= */
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resizeCanvas();
+window.addEventListener("resize", resizeCanvas);
+
+let particles = [];
+let lines = [];
+
+function spawnParticles(x, y, mode = "gold") {
+  const count = mode === "mosh" ? 26 : 16;
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x,
+      y,
+      vx: (Math.random() - 0.5) * (mode === "mosh" ? 5.4 : 2.5),
+      vy: (Math.random() - 0.5) * (mode === "mosh" ? 5.4 : 2.5),
+      life: 1,
+      mode
+    });
+  }
+}
+
+function createLine(fromEl, toEl) {
+  const a = fromEl.getBoundingClientRect();
+  const b = toEl.getBoundingClientRect();
+  lines.push({
+    x1: a.left + a.width / 2,
+    y1: a.top + a.height / 2,
+    x2: b.left + b.width / 2,
+    y2: b.top + b.height / 2,
+    p: 0,
+    state: "draw",
+    alpha: 1
+  });
+}
+
+function drawNormalLine(line) {
+  if (line.state === "draw") {
+    line.p += 0.05;
+    if (line.p >= 1) {
+      line.p = 1;
+      line.state = "full";
+    }
+    const x = line.x1 + (line.x2 - line.x1) * line.p;
+    const y = line.y1 + (line.y2 - line.y1) * line.p;
+
+    ctx.strokeStyle = "rgba(255,215,150,0.56)";
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(line.x1, line.y1);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    return;
+  }
+
+  ctx.strokeStyle = "rgba(255,215,150,0.34)";
+  ctx.lineWidth = 1.1;
+  ctx.beginPath();
+  ctx.moveTo(line.x1, line.y1);
+  ctx.lineTo(line.x2, line.y2);
+  ctx.stroke();
+}
+
+function drawMoshLine(line) {
+  line.alpha -= 0.038;
+  const a = Math.max(0, line.alpha);
+  const segments = 7;
+
+  for (let i = 0; i < segments; i++) {
+    const t1 = i / segments;
+    const t2 = (i + 1) / segments;
+
+    const ax = line.x1 + (line.x2 - line.x1) * t1;
+    const ay = line.y1 + (line.y2 - line.y1) * t1;
+    const bx = line.x1 + (line.x2 - line.x1) * t2;
+    const by = line.y1 + (line.y2 - line.y1) * t2;
+
+    const dx = (Math.random() - 0.5) * 28;
+    const dy = (Math.random() - 0.5) * 5;
+
+    ctx.strokeStyle = `rgba(20, 50, 255, ${a * 0.55})`;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(ax - 8 + dx, ay + dy);
+    ctx.lineTo(bx - 8 + dx, by + dy);
+    ctx.stroke();
+
+    ctx.strokeStyle = `rgba(255, 230, 0, ${a * 0.55})`;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(ax + 8 + dx, ay + dy);
+    ctx.lineTo(bx + 8 + dx, by + dy);
+    ctx.stroke();
+
+    ctx.strokeStyle = `rgba(20,20,20,${a * 0.5})`;
+    ctx.lineWidth = 1.9;
+    ctx.beginPath();
+    ctx.moveTo(ax + dx, ay + dy);
+    ctx.lineTo(bx + dx, by + dy);
+    ctx.stroke();
+  }
+}
+
+function animateCanvas() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  particles.forEach(p => {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life -= p.mode === "mosh" ? 0.032 : 0.02;
+
+    if (p.mode === "mosh") {
+      const col = Math.random() > 0.5
+        ? `rgba(20,50,255,${Math.max(0,p.life)})`
+        : `rgba(255,230,0,${Math.max(0,p.life)})`;
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 2.6, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.fillStyle = `rgba(255,215,0,${Math.max(0,p.life)})`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  });
+  particles = particles.filter(p => p.life > 0);
+
+  lines.forEach(line => {
+    if (line.state === "draw" || line.state === "full") {
+      drawNormalLine(line);
+    } else if (line.state === "glitch") {
+      drawMoshLine(line);
+    }
+  });
+  lines = lines.filter(line => !(line.state === "glitch" && line.alpha <= 0));
+
+  requestAnimationFrame(animateCanvas);
+}
+animateCanvas();
+
+/* =========================
+   GLITCH GLOBAL TYPE MOSH
+========================= */
+let glitchTimer = null;
+
+function flashBars(n = 2) {
+  const chosen = [...strips].sort(() => Math.random() - 0.5).slice(0, n);
+  chosen.forEach(bar => {
+    bar.style.top = Math.random() * 100 + "%";
+    bar.style.height = (6 + Math.random() * 22) + "px";
+    bar.style.left = Math.random() * 12 + "%";
+    bar.style.right = Math.random() * 12 + "%";
+    bar.style.opacity = (0.18 + Math.random() * 0.38).toString();
+    bar.style.background = Math.random() > 0.5
+      ? "rgba(20,50,255,0.65)"
+      : "rgba(255,230,0,0.55)";
+  });
+
+  setTimeout(() => {
+    chosen.forEach(bar => bar.style.opacity = "0");
+  }, 55 + Math.random() * 70);
+}
+
+function setLayerTransform(el, tx, ty, skewX = 0, skewY = 0, scaleX = 1, scaleY = 1) {
+  el.style.transform =
+    `translate(${tx}px, ${ty}px) skew(${skewX}deg, ${skewY}deg) scale(${scaleX}, ${scaleY})`;
+}
+
+function runMoshFrame() {
+  if (!glitchActive) {
+    mainLayer.style.transform = "none";
+    blueLayer.style.transform = "none";
+    yellowLayer.style.transform = "none";
+    mainLayer.style.filter = "none";
+    blueLayer.style.opacity = "0";
+    yellowLayer.style.opacity = "0";
+    glitchTimer = null;
+    return;
+  }
+
+  const baseX = (Math.random() - 0.5) * 12;
+  const baseY = (Math.random() - 0.5) * 4;
+  const blueX = -18 - Math.random() * 26;
+  const yellowX = 18 + Math.random() * 26;
+  const skewA = (Math.random() - 0.5) * 5.5;
+  const skewB = (Math.random() - 0.5) * 2.0;
+
+  setLayerTransform(mainLayer, baseX, baseY, skewA * 0.4, skewB * 0.2, 1, 1);
+  setLayerTransform(blueLayer, baseX + blueX, baseY + (Math.random() - 0.5) * 4, skewA, skewB, 1.02, 1);
+  setLayerTransform(yellowLayer, baseX + yellowX, baseY + (Math.random() - 0.5) * 4, -skewA, -skewB, 1.02, 1);
+
+  mainLayer.style.filter = `blur(${Math.random() > 0.72 ? 0.8 : 0}px)`;
+  blueLayer.style.opacity = (0.55 + Math.random() * 0.22).toString();
+  yellowLayer.style.opacity = (0.55 + Math.random() * 0.22).toString();
+
+  letters.forEach((triplet, i) => {
+    const drift = (i % 2 === 0 ? 1 : -1) * (4 + Math.random() * 10);
+    const rise = (Math.random() - 0.5) * 5;
+
+    triplet.blue.style.transform = `translate(${drift - 10}px, ${rise}px)`;
+    triplet.yellow.style.transform = `translate(${10 - drift}px, ${-rise}px)`;
+
+    if (Math.random() > 0.82) {
+      triplet.main.style.transform = `translate(${(Math.random() - 0.5) * 4}px, ${(Math.random() - 0.5) * 2}px)`;
+    } else {
+      triplet.main.style.transform = "translate(0px, 0px)";
+    }
+  });
+
+  if (Math.random() > 0.45) flashBars(2 + Math.floor(Math.random() * 2));
+  glitchTimer = setTimeout(runMoshFrame, 24 + Math.random() * 42);
+}
+
+/* =========================
+   MINI GLITCH LOCAL HOVER
+========================= */
+function startLocalHoverGlitch(triplet, pan) {
+  if (!animationFinished || glitchActive || triplet.hoverLock || triplet.localGlitch) return;
+
+  triplet.hoverLock = true;
+  triplet.localGlitch = true;
+  triplet.main.classList.add("gold");
+
+  const rect = triplet.main.getBoundingClientRect();
+  spawnParticles(rect.left + rect.width / 2, rect.top + rect.height / 2, "mosh");
+  playUploadedGlitchSound();
+
+  const localLineCount = 2 + Math.floor(Math.random() * 2);
+  for (let i = 0; i < localLineCount; i++) {
+    const y = rect.top + Math.random() * rect.height;
+    const w = rect.width * (0.8 + Math.random() * 0.9);
+
+    lines.push({
+      x1: rect.left - rect.width * 0.25,
+      y1: y,
+      x2: rect.left - rect.width * 0.25 + w,
+      y2: y + (Math.random() - 0.5) * 2,
+      p: 1,
+      state: "glitch",
+      alpha: 0.9
+    });
+  }
+
+  const localStart = performance.now();
+  const duration = 320 + Math.random() * 120;
+
+  function animateLocal() {
+    const elapsed = performance.now() - localStart;
+    if (elapsed >= duration || glitchActive) {
+      triplet.main.style.transform = "translate(0px, 0px)";
+      triplet.blue.style.transform = "translate(0px, 0px)";
+      triplet.yellow.style.transform = "translate(0px, 0px)";
+      triplet.blue.style.opacity = "0";
+      triplet.yellow.style.opacity = "0";
+      triplet.main.classList.remove("gold");
+      triplet.localGlitch = false;
+      triplet.hoverLock = false;
+      return;
+    }
+
+    const dx = (Math.random() - 0.5) * 12;
+    const dy = (Math.random() - 0.5) * 4;
+    const skewX = (Math.random() - 0.5) * 5;
+
+    triplet.main.style.transform = `translate(${dx}px, ${dy}px) skewX(${skewX}deg)`;
+    triplet.blue.style.opacity = String(0.45 + Math.random() * 0.25);
+    triplet.yellow.style.opacity = String(0.45 + Math.random() * 0.25);
+
+    triplet.blue.style.transform =
+      `translate(${dx - (8 + Math.random() * 10)}px, ${dy + (Math.random() - 0.5) * 3}px) skewX(${skewX * 1.2}deg)`;
+
+    triplet.yellow.style.transform =
+      `translate(${dx + (8 + Math.random() * 10)}px, ${dy + (Math.random() - 0.5) * 3}px) skewX(${-skewX * 1.2}deg)`;
+
+    requestAnimationFrame(animateLocal);
+  }
+
+  requestAnimationFrame(animateLocal);
+}
+
+/* =========================
+   RESET / FIN GLITCH GLOBAL
+========================= */
+function resetPostGlitchInteractivity() {
+  blueLayer.style.opacity = "0";
+  yellowLayer.style.opacity = "0";
+
+  letters.forEach(triplet => {
+    triplet.main.classList.remove("gold");
+    triplet.main.style.color = "#7a7a7a";
+    triplet.main.style.transform = "translate(0px,0px)";
+    triplet.blue.style.transform = "translate(0px,0px)";
+    triplet.yellow.style.transform = "translate(0px,0px)";
+    triplet.hoverLock = false;
+    triplet.localGlitch = false;
+  });
+
+  strips.forEach(bar => bar.style.opacity = "0");
+  animationFinished = true;
+  floatingActive = true;
+}
+
+function startFinalMosh() {
+  glitchActive = true;
+  floatingActive = false;
+
+  letters.forEach(triplet => {
+    const r = triplet.main.getBoundingClientRect();
+    spawnParticles(r.left + r.width / 2, r.top + r.height / 2, "mosh");
+  });
+
+  lines.forEach(line => {
+    line.state = "glitch";
+    line.alpha = 1;
+  });
+
+  playUploadedGlitchSound();
+  runMoshFrame();
+
+  setTimeout(() => {
+    glitchActive = false;
+    if (glitchTimer) clearTimeout(glitchTimer);
+
+    mainLayer.style.transform = "none";
+    blueLayer.style.transform = "none";
+    yellowLayer.style.transform = "none";
+    mainLayer.style.filter = "none";
+
+    resetPostGlitchInteractivity();
+  }, 1200);
+}
+
+/* =========================
+   HOVER
+========================= */
+function triggerHoverAccent(triplet, pan) {
+  if (!animationFinished || glitchActive || triplet.hoverLock || triplet.localGlitch) return;
+
+  if (Math.floor(Math.random() * 15) === 0) {
+    startLocalHoverGlitch(triplet, pan);
+    return;
+  }
+
+  triplet.hoverLock = true;
+  triplet.main.classList.add("gold");
+
+  const rect = triplet.main.getBoundingClientRect();
+  const freq = getQuantizedNote(rect.top, getCurrentChord());
+
+  playHoverAccent(freq, pan);
+  spawnParticles(rect.left + rect.width / 2, rect.top + rect.height / 2, "gold");
+
+  setTimeout(() => {
+    triplet.main.classList.remove("gold");
+    triplet.hoverLock = false;
+  }, 280);
+}
+
+/* =========================
+   MAIN
+========================= */
+const rhythm = [180, 120, 260, 140, 320, 200];
+const wrapper = document.getElementById("wrapper");
 
 function startAnimation() {
   if (started) return;
   started = true;
 
   initAudio();
-  document.querySelector(".click-instruction").style.display = "none";
+  document.querySelector(".click-instruction").style.opacity = "0";
+  wrapper.style.pointerEvents = "none";
 
-  let offsetX = 60;
   let delay = 0;
+  let noteIndex = 0;
+  let prevLanded = null;
 
-  lines.forEach((lineObj, lineIndex) => {
-
-    // ralentir la 2e ligne
-    let lineDelayMultiplier = lineIndex === 1 ? 1.6 : 1;
+  linesData.forEach((lineObj, lineIdx) => {
+    let offsetX = 70;
 
     lineObj.text.split("").forEach(char => {
+      const triplet = createTriplet(char, offsetX, lineObj.className);
+      letters.push(triplet);
 
-      const span = document.createElement("span");
-      span.className = "letter " + lineObj.class;
-      span.textContent = char;
-      span.style.left = offsetX + "px";
+      const pan = getPan(offsetX);
 
-      document.body.appendChild(span);
+      triplet.main.addEventListener("mouseenter", () => {
+        triggerHoverAccent(triplet, pan);
+      });
 
       setTimeout(() => {
-
-        span.style.opacity = "1";
-        span.style.top = (220 + lineIndex * 70 + Math.random()*10) + "px";
+        setTripletOpacity(triplet, 1);
+        const finalY = lineObj.yBase + Math.random() * (lineIdx === 0 ? 12 : 8);
+        setTripletTop(triplet, finalY);
 
         setTimeout(() => {
-          span.classList.add("gold");
+          const rect = triplet.main.getBoundingClientRect();
+          const freq = getQuantizedNote(rect.top, getCurrentChord());
 
-          const freq = 220 + Math.random()*200;
-          playNote(freq);
+          triplet.main.classList.add("gold");
+          playChord(freq, pan);
+          spawnParticles(rect.left + rect.width / 2, rect.top + rect.height / 2, "gold");
 
-        }, 1500);
+          landedCount++;
 
-      }, delay * lineDelayMultiplier);
+          if (prevLanded) {
+            createLine(prevLanded.main, triplet.main);
+          }
+          prevLanded = triplet;
 
-      delay += 120 * lineDelayMultiplier;
-      offsetX += lineIndex === 0 ? 36 : 28;
+          if (landedCount === letters.length) {
+            setTimeout(() => {
+              startFinalMosh();
+            }, 850);
+          }
+        }, lineIdx === 0 ? 1500 : 1750);
+      }, delay);
 
+      delay += rhythm[noteIndex % rhythm.length] * lineObj.delayFactor;
+      offsetX += lineObj.charSpacing;
+      noteIndex++;
+
+      if (noteIndex % 4 === 0) chordStep++;
     });
 
-    offsetX += 80;
-    delay += 400; // pause entre lignes
+    delay += lineIdx === 0 ? 520 : 220;
   });
 }
 
-document.getElementById("wrapper").addEventListener("click", startAnimation);
+wrapper.addEventListener("click", startAnimation);
+wrapper.addEventListener("touchstart", startAnimation, { passive: true });
 </script>
-
 </body>
 </html>
