@@ -160,15 +160,15 @@ const linesData = [
     text: "Orpheus Caranthir",
     className: "line-main",
     yBase: 210,
-    charSpacing: 38,
-    delayFactor: 1
+    delayFactor: 1,
+    tracking: 7
   },
   {
     text: "          Barde mélancolique, Roi du rêve.",
     className: "line-sub",
     yBase: 290,
-    charSpacing: 26,
-    delayFactor: 1.45
+    delayFactor: 1.45,
+    tracking: 10
   }
 ];
 
@@ -364,6 +364,31 @@ function playHoverAccent(freq, pan) {
 
   noise.start(now);
   noise.stop(now + noiseDur);
+}
+
+/* =========================
+   MESURE DU TEXTE / ESPACEMENT
+========================= */
+const measureCanvas = document.createElement("canvas");
+const measureCtx = measureCanvas.getContext("2d");
+
+function getFontForClass(className) {
+  if (className === "line-main") {
+    return 'bold 3.8rem "Amethysta", serif';
+  }
+  return 'bold 2.25rem "Amethysta", serif';
+}
+
+function getUnitAdvance(unit, className, tracking) {
+  measureCtx.font = getFontForClass(className);
+  const width = measureCtx.measureText(unit).width;
+  return width + tracking;
+}
+
+function getSpaceAdvance(className, tracking, count) {
+  measureCtx.font = getFontForClass(className);
+  const width = measureCtx.measureText(" ".repeat(count)).width;
+  return width + tracking * Math.max(0, count - 1);
 }
 
 /* =========================
@@ -833,14 +858,17 @@ function startAnimation() {
   linesData.forEach((lineObj, lineIdx) => {
     let offsetX = 70;
 
-    lineObj.text.split("").forEach(char => {
-      // Les espaces servent uniquement au décalage visuel
-      if (char === " ") {
-        offsetX += lineObj.charSpacing;
+    const units = lineIdx === 1
+      ? lineObj.text.split(/(\s+)/)
+      : lineObj.text.split("");
+
+    units.forEach(unit => {
+      if (unit.trim() === "") {
+        offsetX += getSpaceAdvance(lineObj.className, lineObj.tracking, unit.length);
         return;
       }
 
-      const triplet = createTriplet(char, offsetX, lineObj.className);
+      const triplet = createTriplet(unit, offsetX, lineObj.className);
       letters.push(triplet);
 
       const pan = getPan(offsetX);
@@ -878,7 +906,7 @@ function startAnimation() {
       }, delay);
 
       delay += rhythm[noteIndex % rhythm.length] * lineObj.delayFactor;
-      offsetX += lineObj.charSpacing;
+      offsetX += getUnitAdvance(unit, lineObj.className, lineObj.tracking);
       noteIndex++;
 
       if (noteIndex % 4 === 0) chordStep++;
