@@ -834,6 +834,12 @@ function startAnimation() {
     let offsetX = 70;
 
     lineObj.text.split("").forEach(char => {
+      // Les espaces servent uniquement au décalage visuel
+      if (char === " ") {
+        offsetX += lineObj.charSpacing;
+        return;
+      }
+
       const triplet = createTriplet(char, offsetX, lineObj.className);
       letters.push(triplet);
 
