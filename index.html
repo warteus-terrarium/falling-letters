@@ -10,9 +10,30 @@ html, body {
   padding: 0;
   width: 100%;
   height: 100%;
-  background: #f2f2f2;
+  background: transparent;
   overflow: hidden;
   font-family: "Amethysta", serif;
+}
+
+/* texture transparente */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(255,255,255,0.08) 0 1px, transparent 1px 100%),
+    radial-gradient(circle at 70% 60%, rgba(255,255,255,0.06) 0 1px, transparent 1px 100%),
+    radial-gradient(circle at 40% 80%, rgba(255,255,255,0.05) 0 1px, transparent 1px 100%),
+    repeating-linear-gradient(
+      0deg,
+      rgba(255,255,255,0.035) 0px,
+      rgba(255,255,255,0.035) 1px,
+      transparent 1px,
+      transparent 4px
+    );
+  opacity: 0.7;
 }
 
 canvas {
@@ -33,10 +54,11 @@ canvas {
 }
 
 .click-instruction {
-  color: #777;
+  color: #8a8a8a;
   font-size: 1.4rem;
   text-align: center;
   transition: opacity 0.5s ease;
+  text-shadow: 0 0 8px rgba(255,255,255,0.12);
 }
 
 #scene {
@@ -61,25 +83,27 @@ canvas {
   position: absolute;
   top: -100px;
   opacity: 0;
-  color: #6f6f6f;
+  color: #7a7a7a;
   font-size: 2.4rem;
   font-weight: bold;
-  pointer-events: auto;
   white-space: pre;
+  pointer-events: auto;
   transition:
     top 1.5s ease-out,
     opacity 1s ease-out,
-    color 0.28s ease,
-    text-shadow 0.28s ease,
-    filter 0.18s ease;
+    color 0.22s ease,
+    text-shadow 0.22s ease,
+    filter 0.12s ease,
+    transform 0.08s ease;
   will-change: top, opacity, transform, color, filter, text-shadow;
 }
 
 #letters-main .gold {
-  color: #FFD700;
+  color: #FFD700 !important;
   text-shadow:
     0 0 8px rgba(255, 215, 0, 0.9),
-    0 0 18px rgba(255, 215, 0, 0.5);
+    0 0 18px rgba(255, 215, 0, 0.55),
+    0 0 28px rgba(255, 215, 0, 0.22);
 }
 
 #letters-blue .letter {
@@ -128,7 +152,7 @@ canvas {
 const words = ["Orpheus", "CARENTHIR"];
 
 /* =========================
-   AUDIO — base reprise du fichier uploadé
+   AUDIO
 ========================= */
 let actx = null;
 let bufs = [];
@@ -141,39 +165,38 @@ function initAudio() {
     if (bufs.length) return;
 
     for (let i = 0; i < 5; i++) {
-      const dur = 1.1 + Math.random() * 0.8;
+      const dur = 1.15 + Math.random() * 0.85;
       const sr = 44100;
       const buf = actx.createBuffer(1, sr * dur, sr);
       const dd = buf.getChannelData(0);
 
       for (let j = 0; j < buf.length; j++) {
         const t = j / sr;
+        let s = (Math.random() * 2 - 1) * 0.34;
 
-        let s = (Math.random() * 2 - 1) * 0.28;
-
-        if (t < 0.3) {
-          s += Math.sin(220 * t * 2 * Math.PI) * 0.34;
-          s += Math.sin(330 * t * 2 * Math.PI) * 0.12;
-        } else if (t < 0.8) {
-          s += Math.sin(440 * t * 2 * Math.PI) * 0.28;
-          s += Math.sin(880 * t * 2 * Math.PI) * 0.15;
-          s += (Math.random() * 2 - 1) * 0.08;
+        if (t < 0.28) {
+          s += Math.sin(220 * t * 2 * Math.PI) * 0.42;
+          s += Math.sin(330 * t * 2 * Math.PI) * 0.18;
+        } else if (t < 0.78) {
+          s += Math.sin(440 * t * 2 * Math.PI) * 0.34;
+          s += Math.sin(880 * t * 2 * Math.PI) * 0.18;
+          s += (Math.random() * 2 - 1) * 0.12;
         } else {
-          s += Math.sin(330 * t * 2 * Math.PI) * 0.2;
-          s += (Math.random() * 2 - 1) * 0.14;
+          s += Math.sin(330 * t * 2 * Math.PI) * 0.24;
+          s += (Math.random() * 2 - 1) * 0.18;
         }
 
         const fs = dur * 0.58;
         if (t > fs) s *= Math.max(0, 1 - (t - fs) / (dur - fs));
-        if (t < 0.04) s *= t / 0.04;
+        if (t < 0.035) s *= t / 0.035;
 
-        dd[j] = s;
+        dd[j] = Math.max(-1, Math.min(1, s));
       }
 
       bufs.push(buf);
     }
   } catch (e) {
-    console.error("Erreur initAudio:", e);
+    console.error(e);
   }
 }
 
@@ -191,22 +214,22 @@ function playUploadedGlitchSound() {
     const g = actx.createGain();
 
     hp.type = "highpass";
-    hp.frequency.value = 600;
+    hp.frequency.value = 520;
 
     bp.type = "bandpass";
-    bp.frequency.value = 1650 + Math.random() * 1400;
-    bp.Q.value = 0.9;
+    bp.frequency.value = 1700 + Math.random() * 1500;
+    bp.Q.value = 0.75;
 
-    compressor.threshold.value = -28;
+    compressor.threshold.value = -26;
     compressor.knee.value = 18;
-    compressor.ratio.value = 14;
-    compressor.attack.value = 0.003;
-    compressor.release.value = 0.2;
+    compressor.ratio.value = 16;
+    compressor.attack.value = 0.002;
+    compressor.release.value = 0.16;
 
-    g.gain.setValueAtTime(1.7, actx.currentTime);
+    g.gain.setValueAtTime(3.2, actx.currentTime);
     g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 1.15);
 
-    src.playbackRate.value = 0.78 + Math.random() * 0.32;
+    src.playbackRate.value = 0.74 + Math.random() * 0.35;
 
     src.connect(hp);
     hp.connect(bp);
@@ -220,9 +243,7 @@ function playUploadedGlitchSound() {
   actx.state === "suspended" ? actx.resume().then(go) : go();
 }
 
-/* =========================
-   MUSIQUE DES LETTRES
-========================= */
+/* accords de l'animation */
 const scale = [0, 2, 3, 5, 7, 8, 10];
 const progression = [
   [0, 2, 4],
@@ -259,9 +280,7 @@ function playChord(freq, pan) {
   if (!actx) initAudio();
   if (!actx) return;
 
-  const ratios = [1, 1.2, 1.5];
-
-  ratios.forEach((r, i) => {
+  [1, 1.2, 1.5].forEach((r, i) => {
     const osc = actx.createOscillator();
     const gain = actx.createGain();
     const panner = actx.createStereoPanner();
@@ -275,7 +294,7 @@ function playChord(freq, pan) {
 
     gain.gain.setValueAtTime(0.0001, actx.currentTime);
     gain.gain.linearRampToValueAtTime(0.16, actx.currentTime + 0.045);
-    gain.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 1.9);
+    gain.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 1.7);
 
     panner.pan.value = pan;
 
@@ -285,8 +304,69 @@ function playChord(freq, pan) {
     panner.connect(actx.destination);
 
     osc.start(actx.currentTime + i * 0.035);
-    osc.stop(actx.currentTime + 2);
+    osc.stop(actx.currentTime + 1.9);
   });
+}
+
+/* accent hover plus sec et plus glitchy */
+function playHoverAccent(freq, pan) {
+  if (!actx) initAudio();
+  if (!actx) return;
+
+  const now = actx.currentTime;
+
+  const osc = actx.createOscillator();
+  const gain = actx.createGain();
+  const panner = actx.createStereoPanner();
+  const bp = actx.createBiquadFilter();
+
+  osc.type = "square";
+  osc.frequency.setValueAtTime(freq * 1.5, now);
+  osc.frequency.exponentialRampToValueAtTime(freq * 0.95, now + 0.08);
+
+  bp.type = "bandpass";
+  bp.frequency.value = Math.min(2600, freq * 3.2);
+  bp.Q.value = 3;
+
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.linearRampToValueAtTime(0.22, now + 0.012);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+
+  panner.pan.value = pan;
+
+  osc.connect(bp);
+  bp.connect(gain);
+  gain.connect(panner);
+  panner.connect(actx.destination);
+
+  osc.start(now);
+  osc.stop(now + 0.2);
+
+  const noiseDur = 0.11;
+  const sr = actx.sampleRate;
+  const buf = actx.createBuffer(1, Math.floor(sr * noiseDur), sr);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) {
+    data[i] = (Math.random() * 2 - 1) * 0.35;
+  }
+
+  const noise = actx.createBufferSource();
+  const ng = actx.createGain();
+  const nhp = actx.createBiquadFilter();
+
+  nhp.type = "highpass";
+  nhp.frequency.value = 1800;
+
+  ng.gain.setValueAtTime(0.0001, now);
+  ng.gain.linearRampToValueAtTime(0.12, now + 0.008);
+  ng.gain.exponentialRampToValueAtTime(0.001, now + noiseDur);
+
+  noise.buffer = buf;
+  noise.connect(nhp);
+  nhp.connect(ng);
+  ng.connect(panner);
+  noise.start(now);
+  noise.stop(now + noiseDur);
 }
 
 /* =========================
@@ -307,6 +387,7 @@ let letters = [];
 let started = false;
 let landedCount = 0;
 let glitchActive = false;
+let animationFinished = false;
 
 function createTriplet(char, leftPx) {
   const main = document.createElement("span");
@@ -323,7 +404,7 @@ function createTriplet(char, leftPx) {
   blueLayer.appendChild(blue);
   yellowLayer.appendChild(yellow);
 
-  return { main, blue, yellow };
+  return { main, blue, yellow, hoverLock: false };
 }
 
 function setTripletTop(triplet, topPx) {
@@ -392,7 +473,7 @@ function drawNormalLine(line) {
     const x = line.x1 + (line.x2 - line.x1) * line.p;
     const y = line.y1 + (line.y2 - line.y1) * line.p;
 
-    ctx.strokeStyle = "rgba(255,215,150,0.58)";
+    ctx.strokeStyle = "rgba(255,215,150,0.56)";
     ctx.lineWidth = 1.2;
     ctx.beginPath();
     ctx.moveTo(line.x1, line.y1);
@@ -401,7 +482,7 @@ function drawNormalLine(line) {
     return;
   }
 
-  ctx.strokeStyle = "rgba(255,215,150,0.38)";
+  ctx.strokeStyle = "rgba(255,215,150,0.34)";
   ctx.lineWidth = 1.1;
   ctx.beginPath();
   ctx.moveTo(line.x1, line.y1);
@@ -412,8 +493,8 @@ function drawNormalLine(line) {
 function drawMoshLine(line) {
   line.alpha -= 0.038;
   const a = Math.max(0, line.alpha);
-
   const segments = 7;
+
   for (let i = 0; i < segments; i++) {
     const t1 = i / segments;
     const t2 = (i + 1) / segments;
@@ -488,7 +569,7 @@ function animateCanvas() {
 animateCanvas();
 
 /* =========================
-   GLITCH TYPE "MOSH"
+   GLITCH TYPE MOSH
 ========================= */
 let glitchTimer = null;
 
@@ -529,10 +610,8 @@ function runMoshFrame() {
 
   const baseX = (Math.random() - 0.5) * 12;
   const baseY = (Math.random() - 0.5) * 4;
-
   const blueX = -18 - Math.random() * 26;
   const yellowX = 18 + Math.random() * 26;
-
   const skewA = (Math.random() - 0.5) * 5.5;
   const skewB = (Math.random() - 0.5) * 2.0;
 
@@ -559,7 +638,6 @@ function runMoshFrame() {
   });
 
   if (Math.random() > 0.45) flashBars(2 + Math.floor(Math.random() * 2));
-
   glitchTimer = setTimeout(runMoshFrame, 24 + Math.random() * 42);
 }
 
@@ -569,13 +647,15 @@ function resetPostGlitchInteractivity() {
 
   letters.forEach(triplet => {
     triplet.main.classList.remove("gold");
-    triplet.main.style.color = "#6f6f6f";
+    triplet.main.style.color = "#7a7a7a";
     triplet.main.style.transform = "translate(0px,0px)";
     triplet.blue.style.transform = "translate(0px,0px)";
     triplet.yellow.style.transform = "translate(0px,0px)";
+    triplet.hoverLock = false;
   });
 
   strips.forEach(bar => bar.style.opacity = "0");
+  animationFinished = true;
 }
 
 function startFinalMosh() {
@@ -608,6 +688,27 @@ function startFinalMosh() {
 }
 
 /* =========================
+   HOVER
+========================= */
+function triggerHoverAccent(triplet, pan) {
+  if (!animationFinished || glitchActive || triplet.hoverLock) return;
+
+  triplet.hoverLock = true;
+  triplet.main.classList.add("gold");
+
+  const rect = triplet.main.getBoundingClientRect();
+  const freq = getQuantizedNote(rect.top, getCurrentChord());
+
+  playHoverAccent(freq, pan);
+  spawnParticles(rect.left + rect.width / 2, rect.top + rect.height / 2, "gold");
+
+  setTimeout(() => {
+    triplet.main.classList.remove("gold");
+    triplet.hoverLock = false;
+  }, 220);
+}
+
+/* =========================
    MAIN
 ========================= */
 const rhythm = [180, 120, 260, 140, 320, 200];
@@ -619,8 +720,6 @@ function startAnimation() {
 
   initAudio();
   document.querySelector(".click-instruction").style.opacity = "0";
-
-  // ✅ libère les interactions souris pour le hover après le lancement
   wrapper.style.pointerEvents = "none";
 
   let delay = 0;
@@ -636,21 +735,7 @@ function startAnimation() {
       const pan = getPan(offsetX);
 
       triplet.main.addEventListener("mouseenter", () => {
-        if (glitchActive) return;
-        if (!started) return;
-
-        const rect = triplet.main.getBoundingClientRect();
-        const freq = getQuantizedNote(rect.top, getCurrentChord());
-
-        triplet.main.classList.add("gold");
-        playChord(freq, pan);
-        spawnParticles(rect.left + rect.width / 2, rect.top + rect.height / 2, "gold");
-
-        setTimeout(() => {
-          if (!glitchActive) {
-            triplet.main.classList.remove("gold");
-          }
-        }, 420);
+        triggerHoverAccent(triplet, pan);
       });
 
       setTimeout(() => {
