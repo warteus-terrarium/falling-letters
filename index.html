@@ -15,7 +15,6 @@ html, body {
   font-family: "Amethysta", serif;
 }
 
-/* texture transparente */
 body::before {
   content: "";
   position: fixed;
@@ -152,7 +151,7 @@ canvas {
 const words = ["Orpheus", "CARENTHIR"];
 
 /* =========================
-   AUDIO
+   AUDIO — paramètres restaurés
 ========================= */
 let actx = null;
 let bufs = [];
@@ -164,35 +163,31 @@ function initAudio() {
     }
     if (bufs.length) return;
 
-    for (let i = 0; i < 5; i++) {
-      const dur = 1.15 + Math.random() * 0.85;
+    for (let i = 0; i < 4; i++) {
+      const dur = 1.0 + Math.random() * 0.7;
       const sr = 44100;
       const buf = actx.createBuffer(1, sr * dur, sr);
       const dd = buf.getChannelData(0);
 
       for (let j = 0; j < buf.length; j++) {
         const t = j / sr;
-        let s = (Math.random() * 2 - 1) * 0.34;
+        let s = (Math.random() * 2 - 1) * 0.18;
 
-        if (t < 0.28) {
-          s += Math.sin(220 * t * 2 * Math.PI) * 0.42;
-          s += Math.sin(330 * t * 2 * Math.PI) * 0.18;
-        } else if (t < 0.78) {
-          s += Math.sin(440 * t * 2 * Math.PI) * 0.34;
-          s += Math.sin(880 * t * 2 * Math.PI) * 0.18;
-          s += (Math.random() * 2 - 1) * 0.12;
+        if (t < 0.3) {
+          s += Math.sin(220 * t * 2 * Math.PI) * 0.26;
+        } else if (t < 0.7) {
+          s += Math.sin(440 * t * 2 * Math.PI) * 0.2;
+          s += Math.sin(880 * t * 2 * Math.PI) * 0.1;
         } else {
-          s += Math.sin(330 * t * 2 * Math.PI) * 0.24;
-          s += (Math.random() * 2 - 1) * 0.18;
+          s += Math.sin(330 * t * 2 * Math.PI) * 0.16;
+          s += (Math.random() * 2 - 1) * 0.07;
         }
 
-        const fs = dur * 0.58;
+        const fs = dur * 0.6;
         if (t > fs) s *= Math.max(0, 1 - (t - fs) / (dur - fs));
-        if (t < 0.035) s *= t / 0.035;
-
-        dd[j] = Math.max(-1, Math.min(1, s));
+        if (t < 0.05) s *= t / 0.05;
+        dd[j] = s;
       }
-
       bufs.push(buf);
     }
   } catch (e) {
@@ -207,43 +202,22 @@ function playUploadedGlitchSound() {
   const go = () => {
     const src = actx.createBufferSource();
     src.buffer = bufs[Math.floor(Math.random() * bufs.length)];
-
-    const hp = actx.createBiquadFilter();
-    const bp = actx.createBiquadFilter();
-    const compressor = actx.createDynamicsCompressor();
     const g = actx.createGain();
 
-    hp.type = "highpass";
-    hp.frequency.value = 520;
-
-    bp.type = "bandpass";
-    bp.frequency.value = 1700 + Math.random() * 1500;
-    bp.Q.value = 0.75;
-
-    compressor.threshold.value = -26;
-    compressor.knee.value = 18;
-    compressor.ratio.value = 16;
-    compressor.attack.value = 0.002;
-    compressor.release.value = 0.16;
-
-    g.gain.setValueAtTime(3.2, actx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 1.15);
-
-    src.playbackRate.value = 0.74 + Math.random() * 0.35;
-
-    src.connect(hp);
-    hp.connect(bp);
-    bp.connect(compressor);
-    compressor.connect(g);
+    g.gain.value = 0.35;
+    src.connect(g);
     g.connect(actx.destination);
 
+    src.playbackRate.value = 0.8 + Math.random() * 0.5;
     src.start();
   };
 
   actx.state === "suspended" ? actx.resume().then(go) : go();
 }
 
-/* accords de l'animation */
+/* =========================
+   MUSIQUE DES LETTRES
+========================= */
 const scale = [0, 2, 3, 5, 7, 8, 10];
 const progression = [
   [0, 2, 4],
@@ -308,46 +282,48 @@ function playChord(freq, pan) {
   });
 }
 
-/* accent hover plus sec et plus glitchy */
+/* hover plus mélodieux */
 function playHoverAccent(freq, pan) {
   if (!actx) initAudio();
   if (!actx) return;
 
   const now = actx.currentTime;
 
-  const osc = actx.createOscillator();
-  const gain = actx.createGain();
   const panner = actx.createStereoPanner();
-  const bp = actx.createBiquadFilter();
-
-  osc.type = "square";
-  osc.frequency.setValueAtTime(freq * 1.5, now);
-  osc.frequency.exponentialRampToValueAtTime(freq * 0.95, now + 0.08);
-
-  bp.type = "bandpass";
-  bp.frequency.value = Math.min(2600, freq * 3.2);
-  bp.Q.value = 3;
-
-  gain.gain.setValueAtTime(0.0001, now);
-  gain.gain.linearRampToValueAtTime(0.22, now + 0.012);
-  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
-
   panner.pan.value = pan;
-
-  osc.connect(bp);
-  bp.connect(gain);
-  gain.connect(panner);
   panner.connect(actx.destination);
 
-  osc.start(now);
-  osc.stop(now + 0.2);
+  const freqs = [freq, freq * 1.25];
+  freqs.forEach((f, idx) => {
+    const osc = actx.createOscillator();
+    const gain = actx.createGain();
+    const filter = actx.createBiquadFilter();
 
-  const noiseDur = 0.11;
+    osc.type = idx === 0 ? "triangle" : "sine";
+    osc.frequency.setValueAtTime(f * 1.04, now);
+    osc.frequency.exponentialRampToValueAtTime(f, now + 0.16);
+
+    filter.type = "lowpass";
+    filter.frequency.value = 2400;
+
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(idx === 0 ? 0.14 : 0.09, now + 0.018);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(panner);
+
+    osc.start(now + idx * 0.012);
+    osc.stop(now + 0.3);
+  });
+
+  const noiseDur = 0.07;
   const sr = actx.sampleRate;
   const buf = actx.createBuffer(1, Math.floor(sr * noiseDur), sr);
   const data = buf.getChannelData(0);
   for (let i = 0; i < data.length; i++) {
-    data[i] = (Math.random() * 2 - 1) * 0.35;
+    data[i] = (Math.random() * 2 - 1) * 0.06;
   }
 
   const noise = actx.createBufferSource();
@@ -355,16 +331,17 @@ function playHoverAccent(freq, pan) {
   const nhp = actx.createBiquadFilter();
 
   nhp.type = "highpass";
-  nhp.frequency.value = 1800;
+  nhp.frequency.value = 2200;
 
   ng.gain.setValueAtTime(0.0001, now);
-  ng.gain.linearRampToValueAtTime(0.12, now + 0.008);
+  ng.gain.linearRampToValueAtTime(0.028, now + 0.01);
   ng.gain.exponentialRampToValueAtTime(0.001, now + noiseDur);
 
   noise.buffer = buf;
   noise.connect(nhp);
   nhp.connect(ng);
   ng.connect(panner);
+
   noise.start(now);
   noise.stop(now + noiseDur);
 }
@@ -705,7 +682,7 @@ function triggerHoverAccent(triplet, pan) {
   setTimeout(() => {
     triplet.main.classList.remove("gold");
     triplet.hoverLock = false;
-  }, 220);
+  }, 280);
 }
 
 /* =========================
