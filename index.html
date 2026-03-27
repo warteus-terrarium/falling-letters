@@ -9,7 +9,7 @@ html, body {
   padding: 0;
   width: 100%;
   height: 100%;
-  background: transparent;
+  background: black;
   overflow: hidden;
   font-family: "Amethysta", serif;
 }
@@ -18,6 +18,7 @@ canvas {
   position: absolute;
   inset: 0;
   pointer-events: none;
+  z-index: 1;
 }
 
 #wrapper {
@@ -43,6 +44,7 @@ canvas {
   z-index: 3;
   pointer-events: none;
   transform-origin: center center;
+  will-change: transform, filter, opacity;
 }
 
 .letter {
@@ -58,6 +60,7 @@ canvas {
     opacity 1s ease-out,
     color 0.35s ease,
     text-shadow 0.35s ease;
+  will-change: top, opacity, color, text-shadow;
 }
 
 .gold {
@@ -107,200 +110,343 @@ function playGlitchSound() {
   src.buffer = bufs[Math.floor(Math.random() * bufs.length)];
 
   const gain = actx.createGain();
+  const hp = actx.createBiquadFilter();
+  const bp = actx.createBiquadFilter();
+
+  hp.type = "highpass";
+  hp.frequency.value = 900;
+
+  bp.type = "bandpass";
+  bp.frequency.value = 2200;
+  bp.Q.value = 0.9;
+
   gain.gain.setValueAtTime(1, actx.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 1);
 
-  src.connect(gain);
+  src.playbackRate.value = 0.78 + Math.random() * 0.18;
+
+  src.connect(hp);
+  hp.connect(bp);
+  bp.connect(gain);
   gain.connect(actx.destination);
 
   src.start();
 }
 
 /* ================= MUSIC ================= */
-const scale = [0,2,3,5,7,8,10];
+const scale = [0, 2, 3, 5, 7, 8, 10];
 const progression = [[0,2,4],[5,0,2],[3,5,0],[4,6,1]];
 let chordStep = 0;
 
-function midiToFreq(m){return 440*Math.pow(2,(m-69)/12);}
+function midiToFreq(m){ return 440 * Math.pow(2, (m - 69) / 12); }
 
-function getQuantizedNote(y,chord){
-  const t = Math.max(0, Math.min(1, (y-180)/80));
-  const octave = Math.floor(3 + (1-t)*2);
-  const degree = chord[Math.floor(Math.random()*chord.length)];
-  return midiToFreq(57 + scale[degree] + (octave-4)*12);
+function getQuantizedNote(y, chord) {
+  const t = Math.max(0, Math.min(1, (y - 180) / 80));
+  const octave = Math.floor(3 + (1 - t) * 2);
+  const degree = chord[Math.floor(Math.random() * chord.length)];
+  return midiToFreq(57 + scale[degree] + (octave - 4) * 12);
 }
 
-function getCurrentChord(){return progression[chordStep%progression.length];}
+function getCurrentChord() {
+  return progression[chordStep % progression.length];
+}
 
-function playChord(freq,pan){
+function playChord(freq, pan) {
   if (!actx) initAudio();
 
-  [1,1.2,1.5].forEach((r,i)=>{
-    const o=actx.createOscillator();
-    const g=actx.createGain();
-    const p=actx.createStereoPanner();
+  [1, 1.2, 1.5].forEach((r, i) => {
+    const o = actx.createOscillator();
+    const g = actx.createGain();
+    const p = actx.createStereoPanner();
+    const f = actx.createBiquadFilter();
 
-    o.type="triangle";
-    o.frequency.value=freq*r;
+    o.type = "triangle";
+    o.frequency.value = freq * r;
 
-    g.gain.setValueAtTime(0,actx.currentTime);
-    g.gain.linearRampToValueAtTime(0.2,actx.currentTime+0.05);
-    g.gain.exponentialRampToValueAtTime(0.001,actx.currentTime+1.5);
+    f.type = "lowpass";
+    f.frequency.value = 1800;
 
-    p.pan.value=pan;
+    g.gain.setValueAtTime(0, actx.currentTime);
+    g.gain.linearRampToValueAtTime(0.2, actx.currentTime + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 1.5);
 
-    o.connect(g); g.connect(p); p.connect(actx.destination);
-    o.start(actx.currentTime+i*0.04);
-    o.stop(actx.currentTime+2);
+    p.pan.value = pan;
+
+    o.connect(f);
+    f.connect(g);
+    g.connect(p);
+    p.connect(actx.destination);
+
+    o.start(actx.currentTime + i * 0.04);
+    o.stop(actx.currentTime + 2);
   });
 }
 
 /* ================= CANVAS ================= */
-const canvas=document.getElementById("canvas");
-const ctx=canvas.getContext("2d");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
 
-function resize(){canvas.width=innerWidth;canvas.height=innerHeight;}
-resize(); addEventListener("resize",resize);
+function resize() {
+  canvas.width = innerWidth;
+  canvas.height = innerHeight;
+}
+resize();
+addEventListener("resize", resize);
 
-let lines=[];
+let lines = [];
+let particles = [];
 
-function createLine(a,b){
+function createLine(fromRect, toRect) {
   lines.push({
-    x1:a.left+a.width/2,
-    y1:a.top+a.height/2,
-    x2:b.left+b.width/2,
-    y2:b.top+b.height/2,
-    p:0,
-    state:"draw"
+    x1: fromRect.left + fromRect.width / 2,
+    y1: fromRect.top + fromRect.height / 2,
+    x2: toRect.left + toRect.width / 2,
+    y2: toRect.top + toRect.height / 2,
+    p: 0,
+    alpha: 1,
+    state: "draw"
   });
 }
 
-function animate(){
-  ctx.clearRect(0,0,canvas.width,canvas.height);
+function spawnParticles(x, y, color = "gold") {
+  const count = color === "white" ? 24 : 16;
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x,
+      y,
+      vx: (Math.random() - 0.5) * (color === "white" ? 5 : 2.5),
+      vy: (Math.random() - 0.5) * (color === "white" ? 5 : 2.5),
+      life: 1,
+      color
+    });
+  }
+}
 
-  lines.forEach(l=>{
-    if(l.state==="draw"){
-      l.p+=0.05;
-      if(l.p>=1){l.p=1;l.state="full";}
-      const x=l.x1+(l.x2-l.x1)*l.p;
-      const y=l.y1+(l.y2-l.y1)*l.p;
+function animate() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      ctx.strokeStyle="rgba(255,215,150,0.6)";
+  particles.forEach(p => {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life -= p.color === "white" ? 0.035 : 0.02;
+
+    if (p.color === "white") {
+      ctx.fillStyle = `rgba(255,255,255,${Math.max(0, p.life)})`;
+    } else {
+      ctx.fillStyle = `rgba(255,215,0,${Math.max(0, p.life)})`;
+    }
+
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.color === "white" ? 2.4 : 2, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  particles = particles.filter(p => p.life > 0);
+
+  lines.forEach(l => {
+    if (l.state === "draw") {
+      l.p += 0.05;
+      if (l.p >= 1) {
+        l.p = 1;
+        l.state = "full";
+      }
+
+      const x = l.x1 + (l.x2 - l.x1) * l.p;
+      const y = l.y1 + (l.y2 - l.y1) * l.p;
+
+      ctx.strokeStyle = "rgba(255,215,150,0.6)";
+      ctx.lineWidth = 1.2;
       ctx.beginPath();
-      ctx.moveTo(l.x1,l.y1);
-      ctx.lineTo(x,y);
+      ctx.moveTo(l.x1, l.y1);
+      ctx.lineTo(x, y);
       ctx.stroke();
-    } else if(l.state==="full"){
-      ctx.strokeStyle="rgba(255,215,150,0.4)";
+
+    } else if (l.state === "full") {
+      ctx.strokeStyle = "rgba(255,215,150,0.4)";
+      ctx.lineWidth = 1.1;
       ctx.beginPath();
-      ctx.moveTo(l.x1,l.y1);
-      ctx.lineTo(l.x2,l.y2);
+      ctx.moveTo(l.x1, l.y1);
+      ctx.lineTo(l.x2, l.y2);
       ctx.stroke();
-    } else if(l.state==="glitch"){
-      l.alpha-=0.05;
-      ctx.strokeStyle="rgba(255,255,255,"+l.alpha+")";
+
+    } else if (l.state === "glitch") {
+      l.alpha -= 0.05;
+
+      // glitch plus "mosh", pas bleuté
+      const dx1 = (Math.random() - 0.5) * 14;
+      const dy1 = (Math.random() - 0.5) * 4;
+      const dx2 = (Math.random() - 0.5) * 14;
+      const dy2 = (Math.random() - 0.5) * 4;
+
+      ctx.strokeStyle = `rgba(255,255,255,${Math.max(0, l.alpha)})`;
+      ctx.lineWidth = 1.7;
       ctx.beginPath();
-      ctx.moveTo(l.x1+(Math.random()-0.5)*10,l.y1+(Math.random()-0.5)*10);
-      ctx.lineTo(l.x2+(Math.random()-0.5)*10,l.y2+(Math.random()-0.5)*10);
+      ctx.moveTo(l.x1 + dx1, l.y1 + dy1);
+      ctx.lineTo(l.x2 + dx2, l.y2 + dy2);
       ctx.stroke();
     }
   });
+
+  lines = lines.filter(l => !(l.state === "glitch" && l.alpha <= 0));
 
   requestAnimationFrame(animate);
 }
 animate();
 
-/* ================= JITTER GLOBAL ================= */
-let glitch=false;
-const layer=document.getElementById("letters-layer");
+/* ================= GLOBAL JITTER ================= */
+const layer = document.getElementById("letters-layer");
+let glitch = false;
+let jitterTimeout = null;
 
-function jitter(){
-  if(!glitch){
-    layer.style.transform="none";
+function scheduleMoshJitter() {
+  if (!glitch) {
+    layer.style.transform = "none";
+    layer.style.filter = "none";
+    layer.style.opacity = "1";
+    jitterTimeout = null;
     return;
   }
 
-  // ⚡ jitter violent type UI glitch
-  const x=(Math.random()-0.5)*30;
-  const y=(Math.random()-0.5)*20;
-  const r=(Math.random()-0.5)*8;
-  const s=1+(Math.random()-0.5)*0.1;
+  // Déplacement surtout horizontal, comme un mosh numérique
+  const tx = (Math.random() - 0.5) * 42;
+  const ty = (Math.random() - 0.5) * 8;
 
-  layer.style.transform=
-    `translate(${x}px,${y}px) rotate(${r}deg) scale(${s})`;
+  // Très légère rotation seulement
+  const rot = (Math.random() - 0.5) * 1.1;
 
-  setTimeout(()=>requestAnimationFrame(jitter), Math.random()*40);
+  // Petit skew horizontal
+  const skewX = (Math.random() - 0.5) * 6;
+  const skewY = (Math.random() - 0.5) * 1.4;
+
+  // Scale léger, pour éviter l’effet "tournoiement"
+  const scaleX = 1 + (Math.random() - 0.5) * 0.06;
+  const scaleY = 1 + (Math.random() - 0.5) * 0.03;
+
+  // Palier irrégulier, type frame-jump
+  layer.style.transform =
+    `translate(${tx}px, ${ty}px) rotate(${rot}deg) skew(${skewX}deg, ${skewY}deg) scale(${scaleX}, ${scaleY})`;
+
+  layer.style.filter =
+    `drop-shadow(${(Math.random() - 0.5) * 8}px 0 0 rgba(255,255,255,0.55))`;
+
+  // micro saut d’opacité pour l’effet vidéo corrompue
+  layer.style.opacity = Math.random() > 0.82 ? "0.86" : "1";
+
+  jitterTimeout = setTimeout(scheduleMoshJitter, 24 + Math.random() * 36);
+}
+
+function stopMoshJitter() {
+  glitch = false;
+  if (jitterTimeout) {
+    clearTimeout(jitterTimeout);
+    jitterTimeout = null;
+  }
+
+  layer.style.transform = "none";
+  layer.style.filter = "none";
+  layer.style.opacity = "1";
 }
 
 /* ================= MAIN ================= */
-let letters=[];
-let landed=0;
+let letters = [];
+let landed = 0;
+const rhythm = [180, 120, 260, 140, 320, 200];
 
-function start(){
-  if(glitch) return;
+function start() {
+  if (letters.length) return;
 
   initAudio();
-  document.querySelector(".click-instruction").style.opacity=0;
+  document.querySelector(".click-instruction").style.opacity = 0;
 
-  let delay=0,x=60,i=0;
-  let prev=null;
+  let delay = 0;
+  let x = 60;
+  let i = 0;
+  let prev = null;
 
-  words.forEach(w=>{
-    w.split("").forEach(c=>{
-      const span=document.createElement("span");
-      span.className="letter";
-      span.textContent=c;
-      span.style.left=x+"px";
+  words.forEach(w => {
+    w.split("").forEach(c => {
+      const span = document.createElement("span");
+      span.className = "letter";
+      span.textContent = c;
+      span.style.left = x + "px";
       layer.appendChild(span);
       letters.push(span);
 
-      const pan=(x/innerWidth)*2-1;
+      const pan = (x / innerWidth) * 2 - 1;
 
-      setTimeout(()=>{
-        span.style.opacity=1;
-        const y=200+Math.random()*40;
-        span.style.top=y+"px";
+      span.addEventListener("mouseenter", () => {
+        if (glitch) return;
+        if (!span.classList.contains("gold")) {
+          const rect = span.getBoundingClientRect();
+          span.classList.add("gold");
+          playChord(getQuantizedNote(rect.top, getCurrentChord()), pan);
+          spawnParticles(rect.left + rect.width / 2, rect.top + rect.height / 2);
 
-        setTimeout(()=>{
-          const rect=span.getBoundingClientRect();
+          setTimeout(() => {
+            if (!glitch) span.classList.remove("gold");
+          }, 400);
+        }
+      });
+
+      setTimeout(() => {
+        span.style.opacity = 1;
+        const y = 200 + Math.random() * 40;
+        span.style.top = y + "px";
+
+        setTimeout(() => {
+          const rect = span.getBoundingClientRect();
           span.classList.add("gold");
 
-          playChord(getQuantizedNote(rect.top,getCurrentChord()),pan);
+          playChord(getQuantizedNote(rect.top, getCurrentChord()), pan);
+          spawnParticles(rect.left + rect.width / 2, rect.top + rect.height / 2);
 
-          if(prev) createLine(prev.getBoundingClientRect(),rect);
-          prev=span;
+          if (prev) {
+            createLine(prev.getBoundingClientRect(), rect);
+          }
+          prev = span;
 
           landed++;
 
-          if(landed===letters.length){
-            setTimeout(()=>{
-              glitch=true;
-              lines.forEach(l=>{l.state="glitch";l.alpha=1;});
+          if (landed === letters.length) {
+            setTimeout(() => {
+              glitch = true;
+              lines.forEach(l => {
+                l.state = "glitch";
+                l.alpha = 1;
+              });
+
+              letters.forEach(letter => {
+                const r = letter.getBoundingClientRect();
+                spawnParticles(r.left + r.width / 2, r.top + r.height / 2, "white");
+              });
+
               playGlitchSound();
-              jitter();
+              scheduleMoshJitter();
 
-              setTimeout(()=>{
-                glitch=false;
-                letters.forEach(l=>l.classList.remove("gold"));
-              },1200);
-
-            },800);
+              setTimeout(() => {
+                stopMoshJitter();
+                letters.forEach(l => l.classList.remove("gold"));
+              }, 1200);
+            }, 800);
           }
 
-        },1500);
+        }, 1500);
 
-      },delay);
+      }, delay);
 
-      delay+=[180,120,260,140,320,200][i%6];
-      x+=40;
+      delay += rhythm[i % rhythm.length];
+      x += 40;
       i++;
-      if(i%4===0) chordStep++;
+
+      if (i % 4 === 0) chordStep++;
     });
-    x+=60;
+
+    x += 60;
   });
 }
 
-document.getElementById("wrapper").onclick=start;
+document.getElementById("wrapper").addEventListener("click", start);
+document.getElementById("wrapper").addEventListener("touchstart", start, { passive: true });
 </script>
 
 </body>
